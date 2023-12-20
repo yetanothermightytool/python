@@ -8,8 +8,9 @@ import datetime
 def print_line():
     print("___________________________________________________")
     """
-    Original script from Wasabi Knoledge Base.
-    Added the number of objects and the size, incl. the sum of both.
+    Original script from Wasabi Knowledge Base.
+    https://knowledgebase.wasabi.com/hc/en-us/articles/5495621320603-How-do-I-find-the-longest-Retention-Period-I-have-in-my-Object-Lock-Bucket-
+    Added the number of objects, size and the possibility to list only objects which have threshold_days > than given value.
     """
 
 
@@ -197,18 +198,18 @@ def main():
     else:
         operation_parameters = {'Bucket': bucket_name}
 
-    # Initialize mode, number_of_days, and longest variables outside the loop
-    mode               = None
-    number_of_days     = None
-    longest_retention  = 0
-    longest_object     = ""
-    longest_version_id = ""
+    # Initialize variables
+    mode                 = None
+    number_of_days       = None
+    longest_retention    = 0
+    longest_object       = ""
+    longest_version_id   = ""
+    object_count         = 0
+    total_size_bytes     = 0
+    long_retention_count = 0
 
-    # Count for objects within the given prefix
-    object_count       = 0
-
-    # Total size of all objects within the given prefix
-    total_size_bytes  = 0
+    # Set this values for displaying objects with retention > threshold_days
+    threshold_days       = 11
 
     # Paginating over bucket's objects
     for object_response_itr in object_response_paginator.paginate(**operation_parameters):
@@ -233,15 +234,16 @@ def main():
             version_id = version["VersionId"]
             current = "YES" if version["IsLatest"] else "NO "
 
-            # Increment object count for each object within the given prefix
+            # Increment object count
             if key.startswith(prefix):
                 object_count += 1
 
-            # Display object size for each version
+            # Display object size 
             size_bytes = version.get('Size', 0)
-            size_kb = size_bytes / 1024  
-            size_mb = size_kb / 1024     
+            size_kb    = size_bytes / 1024  
+            size_mb    = size_kb / 1024     
 
+            
             object_retention = s3_client.get_object_retention(
                 Bucket=bucket_name,
                 Key=key,
@@ -251,6 +253,7 @@ def main():
                     and 'Mode' in object_retention['Retention']:
                 mode = object_retention['Retention']['Mode']
 
+            # Get number_of_days 
             if 'Retention' in object_retention \
                     and 'RetainUntilDate' in object_retention['Retention']:
                 retain_until_date = object_retention['Retention']['RetainUntilDate']
@@ -265,19 +268,28 @@ def main():
                         longest_object = key
                         longest_version_id = version_id
 
+                    # Check if retention is longer than the threshold
+                    if number_of_days > threshold_days:
+                        long_retention_count += 1
+
             if verbose:
                 print(f'$     Version Id: {version_id} | Current version: {current} | '
                       f'Mode: {mode} | Remaining days: {number_of_days} | Size: {size_mb:.2f} MB')
 
-            # Total size of all objects
+            # Total size
             total_size_bytes += size_bytes
 
+  
     print_line()
+    print(f'$ Number of objects within the prefix "{prefix}": {object_count}')
+
+    # Display all
     total_size_kb = total_size_bytes / 1024  
     total_size_mb = total_size_kb / 1024     
-    print(f'$ Number of objects within the prefix "{prefix}": {object_count}')
-    print(f'$ Total size of all objects within the prefix "{prefix}": {total_size_mb:.2f} MB')
     print(f'$ Longest retention detected in ({longest_retention}) day(s) for object "{longest_object}" with it\'s version ({longest_version_id})')
+    print(f'$ Total size of all objects within the prefix "{prefix}": {total_size_mb:.2f} MB')
+    print(f'$ Number of objects with immutability longer than {threshold_days} days: {long_retention_count}')
+
 
 if __name__ == '__main__':
     print("Welcome. This script will list objects that still under retention.")
