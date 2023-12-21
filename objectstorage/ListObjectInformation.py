@@ -3,6 +3,7 @@ import sys
 from boto3 import client, Session
 from botocore.exceptions import ProfileNotFound, ClientError
 import datetime
+import argparse
 
 
 def print_line():
@@ -30,7 +31,7 @@ def get_credentials():
                    "$ Press 2 and enter to enter Access Key and Secret Key\n"
                    "$ Press 3 to exit: ")
         if ch.strip() == "1":
-            aws_access_key_id, aws_secret_access_key = select_profile()
+            aws_access_key_id, aws_secret_access_key = select_profile() 
             if aws_access_key_id is not None and aws_secret_access_key is not None:
                 credentials_verified = True
         elif ch.strip() == "2":
@@ -83,8 +84,7 @@ def get_bucket_name():
             bucket_verified = True
     return bucket_name
 
-def get_location(bucket_name, aws_access_key_id, aws_secret_access_key):
-    endpoint = 'https://s3.eu-central-2.wasabisys.com'
+def get_location(bucket_name, aws_access_key_id, aws_secret_access_key, endpoint):
     _s3_client = client('s3',
                         endpoint_url=endpoint,
                         aws_access_key_id=aws_access_key_id,
@@ -97,7 +97,7 @@ def get_location(bucket_name, aws_access_key_id, aws_secret_access_key):
         raise Exception("Unexpected error in get_bucket_location_of_s3 function: " + e.__str__())
 
     location = result['LocationConstraint'] or ('us-east-1')
-    return location, f'http://s3.{location}.wasabisys.com'
+    return location, endpoint
 
 
 def create_connection_and_test(aws_access_key_id: str, aws_secret_access_key: str, _region, _bucket):
@@ -146,6 +146,12 @@ def get_verbose_display():
 
 
 def main():
+
+    parser = argparse.ArgumentParser(description="S3 get object information")
+    parser.add_argument("-endpoint", required=True, help="S3 endpoint")
+    parser.add_argument("-threshold",required=True, type=int, help="Display only object immutable > threshold")
+    args = parser.parse_args()
+
     # generate access keys
     access_key_id, secret_access_key = get_credentials()
 
@@ -156,7 +162,7 @@ def main():
 
     # get region
     print("$ Loading the region information for your bucket!")
-    region, endpoint_url = get_location(bucket_name, access_key_id, secret_access_key)
+    region, endpoint_url = get_location(bucket_name, access_key_id, secret_access_key, args.endpoint)
     print(f'$ Region loaded successfully: {region}')
 
     # test the connection and access keys. Also checks if the bucket is valid.
@@ -209,7 +215,7 @@ def main():
     long_retention_count = 0
 
     # Set this values for displaying objects with retention > threshold_days
-    threshold_days       = 11
+    threshold_days       = args.threshold
 
     # Paginating over bucket's objects
     for object_response_itr in object_response_paginator.paginate(**operation_parameters):
@@ -230,9 +236,9 @@ def main():
             if 'Key' not in version or 'VersionId' not in version:
                 continue
 
-            key = version["Key"]
+            key        = version["Key"]
             version_id = version["VersionId"]
-            current = "YES" if version["IsLatest"] else "NO "
+            current    = "YES" if version["IsLatest"] else "NO "
 
             # Increment object count
             if key.startswith(prefix):
@@ -292,7 +298,7 @@ def main():
 
 
 if __name__ == '__main__':
-    print("Welcome. This script will list objects that still under retention.")
+    print("Welcome. This script will list objects that are still under retention.")
     print_line()
     main()
     print("Ended execution!")
