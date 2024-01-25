@@ -7,7 +7,8 @@ import argparse
 # Disable SSL warnings - Use only in test environemts
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-# Latest x-api-version
+# Latest x-api-version - Change url
+api_url     = "https://<vbr-server>:9419"
 api_version = "1.1-rev1"
 
 def get_password(service, username):
@@ -49,6 +50,21 @@ def post_veeam_rest_api(api_url, endpoint, token, body):
 
     return response.json()
 
+def post_logout(api_url, token):
+    url = f"{api_url}/api/oauth2/logout"
+    headers = {
+        "accept": "application/json",
+        "x-api-version": api_version,
+        "Authorization": f"Bearer {token}"
+    }
+
+    response = requests.post(url, headers=headers, verify=False)
+
+    # Check for HTTP error status
+    response.raise_for_status()
+
+    print("Logout successful.")
+
 def main():
     parser = argparse.ArgumentParser(description="Trigger an Incident API event.")
     parser.add_argument("-fqdn", required=True, help="Fully Qualified Domain Name")
@@ -57,10 +73,9 @@ def main():
 
     args = parser.parse_args()
 
-    # General Variables - Change to your environment
-    api_url = "https://<your vbr server>:9419"
+    # General Variables - Change keyring password
     username = "Administrator"
-    password = get_password("<your keyring service name>", username)
+    password = get_password("<your password here>", username)
 
     if not password:
         print("Password not found in keyring. Please set it using the set-keyring utility.")
@@ -78,7 +93,7 @@ def main():
             "ipv4": args.ip
         },
         "details": args.details,
-        "engine": "YAMT Test Script"
+        "engine": "YAMT Demo Script"
     }
 
     print("Triggering Incident API event....")
@@ -87,7 +102,11 @@ def main():
     
     print("Incdient API event triggered successfully.")
     #print("Response:", response)
+    return token
 
 if __name__ == "__main__":
-    main()
-
+    token = main()  
+    if token:
+        
+        print("Log out....")
+        post_logout(api_url, token)
