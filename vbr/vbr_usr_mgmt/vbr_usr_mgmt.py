@@ -9,10 +9,11 @@ from tabulate import tabulate
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Change parameters where necessary
-api_url           = "https://localhost:9419"
+api_url           = "https://win-vbr-01:9419"
 api_major_version = "v1"
 api_version       = "1.1-rev1"
-secret_file       = "secret.txt"
+secret_file       = "secret.txt"           # File created in advance using create_secret.py
+user_name         = ".\\Administrator"     # Username for accessing the RestAPI
 
 # Functions
 def decode_password(encoded_password):
@@ -114,7 +115,7 @@ def main():
     
     args = parser.parse_args()
 
-    username = ".\\Administrator"
+    username = user_name
     password = get_password()
 
     if not password:
@@ -167,4 +168,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
