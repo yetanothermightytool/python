@@ -15,7 +15,7 @@ The script uses the following parameter:
 - `host2scan`      (mandatory): Hostname from which the backups will be scanned.
 
 
-![alt text](https://github.com/yetanothermightytool/python/blob/master/vbr/vbr-scan-backup-restapi/pictures/script-ouput.png)
+![alt text](https://github.com/yetanothermightytool/python/blob/main/vbr/vbr-scan-backup-restapi/pictures/script-output.png)
 
 
 ## Variables
@@ -32,7 +32,7 @@ username = "<your_username_here>"
 ```
 
 ## Notes
-This script uses Fernet from the Python cryptography library to securely decrypt the password used for the REST API access. Create the required files  using this [script](https://github.com/yetanothermightytool/python/blob/master/misc/fernet/create-fernet-files.py)https://github.com/yetanothermightytool/python/tree/main/misc/fernet .
+This script uses Fernet from the Python cryptography library to securely decrypt the password used for the REST API access. Create the required files  using this [script](https://github.com/yetanothermightytool/python/blob/master/misc/fernet/create-fernet-files.py).
 
 
 This script has been tested with the following versions of Veeam Backup & Replication
