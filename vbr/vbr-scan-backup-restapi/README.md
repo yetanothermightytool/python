@@ -19,7 +19,7 @@ The script uses the following parameter:
 
 
 ## Variables
-The following variables are stored in the script and must be changed/adjusted before the first run
+The following variables are stored in the script and must be changed/adjusted before the first run.
 
 ```python
 api_url         = "https://<your_vbr_server_here>:9419"
