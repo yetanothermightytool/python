@@ -16,13 +16,19 @@ The script can be controlled using these parameters:
 - `groupname`       : Display name of the group to be searched for.
 - `applicationname` : Display name of the application to be searched for.
 - `checkprod`       : Checks if item exists in production 
-- `compareprod`     : Compares item properties between a restore point and production
+- `compareprod`     : Compares item properties between the selected restore point and production
 
-## Usage
-Check if user is in restore point.
+## Usage Examples
+Check if user exists in selected restore point.
 ```python
 ./vbr-entraid-search.py -username "Joe Doe"
 ```
+
+Check if user exists in selected restore point and check if it exists in production.
+```python
+./vbr-entraid-search.py -username "Joe Doe" -checkprod
+```
+Note: The latest restore point will be chosen automatically if there is no user input
 
 ## Variables
 The following variables are stored in the script and must be changed/adjusted before the first run.
@@ -40,10 +46,9 @@ username = "<your_username_here>"
 ## Notes
 This script uses Fernet from the Python cryptography library to securely decrypt the password used for the REST API access. Create the required files using this [script](https://github.com/yetanothermightytool/python/blob/master/misc/fernet/create-fernet-files.py).
 
-
 This script has been tested with the following versions of Veeam Backup & Replication
 - Veeam Backup & Replication v12.3
-- Python 3.12.3
+- Python 3.12.3 on Linux
 
 **Please note this script is unofficial and is not created nor supported by Veeam Software.**
 
