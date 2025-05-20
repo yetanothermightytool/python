@@ -3,7 +3,7 @@
 ## Version Information
 ~~~~
 Version: 1.0 (May 19th 2025)
-Requires: Veeam Backup & Replication v12.3.1 & Linux and Python
+Requires: Veeam Backup & Replication v12.3.1 & Linux & Python 3.1+
 Author: Stephan "Steve" Herzig
 ~~~~
 
