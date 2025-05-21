@@ -32,13 +32,14 @@ Save the following scripts in the script folder:
   Imports malware hashes from CSV
 
 ### Database
-The script loads the contents of the database into memory during runtime. There are currently two tables, lobas and malwarebazaar. The lolbas table contains the binaries that malicious actors frequently use. They perform actions that do not correspond to their original purpose. This script checks whether one of the files is outside its “natural habitat”. Download the [CSV file](https://lolbas-project.github.io/api/) and save it to the script folder.
+The script loads the contents of the database into memory during runtime. There are currently two tables, lobas and malwarebazaar. The lolbas table contains the binaries that malicious actors frequently use. They perform actions that do not correspond to their original purpose. This script checks whether one of the files is outside its “natural habitat”. Download the [CSV file](https://lolbas-project.github.io/api/) and save it as lolbin_hashes.csv to the script folder.
+
 
 ```bash
 ./create-db.py
 ```
 
-The malwarebazaar table contains the SHA256 values of the malware files. Download the complete [data dump](https://bazaar.abuse.ch/export/#csv) and unzip the CSV file to the script folder. The script import_malwarebazaar_data.py imports the values into the database.
+The malwarebazaar table contains the SHA256 values of the malware files. Download the complete [data dump](https://bazaar.abuse.ch/export/#csv) and unzip the CSV file as malwarebazaar.csv to the script folder. The script import_malwarebazaar_data.py imports the values into the database.
 
 ```bash
 ./import_malwarebazaar_data.py
