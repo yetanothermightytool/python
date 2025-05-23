@@ -1,4 +1,4 @@
-# VBR Hash Scanner
+# VBR Scanner
 
 ## Version Information
 ~~~~
@@ -14,8 +14,8 @@ Some preparations are required for this script to run.
 
 ### Prepare the script directory
 ```bash
-mkdir ~/vbr-hash-scanner
-cd ~/vbr-hash-scanner
+mkdir ~/vbr-scanner
+cd ~/vbr-scanner
 ```
 ### Credentials
 Save the keyfiles for the REST API user to be used with this [script.](https://github.com/yetanothermightytool/python/tree/main/misc/fernet)
@@ -61,7 +61,7 @@ _(optional)_ Present the backups using iSCSI. Only filesystems with the NTFS, ex
 
 ### Example
 ```bash
-sudo ./data-integration-api.py --host2scan win-server-01 --workers 8 --iscsi
+sudo ./vbr-scanner.py --host2scan win-server-01 --workers 8 --iscsi
 ```
 
 ### Scanning Process Details
@@ -97,6 +97,7 @@ Optional Parameters
 - Logfile			Path to logfile for matches (might get removed)
 
 ## Possible improvements
+- YARA Scan
 - Bloom filter support to improve memory efficiency when handling large hash sets.
 - Mark the scanned restore point as infected in Veeam Backup & Replication.
 - And a few other nice things that I'm currently researching.
