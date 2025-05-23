@@ -18,11 +18,11 @@ mkdir ~/vbr-scanner
 cd ~/vbr-scanner
 ```
 ### Credentials
-Save the keyfiles for the REST API user to be used with this [script.](https://github.com/yetanothermightytool/python/tree/main/misc/fernet)
+Save the keyfiles for the REST API user to be used with this [script.](https://github.com/yetanothermightytool/python/tree/main/misc/fernet). Administrator is stored as the default user in the vbr-scanner Python script.
 
 ### Store script files
 Save the following scripts in the script folder:
-- **data-integration-api.py**
+- **vbr-scanner.py**
   Executes the mount via the Veeam REST API and then triggers the scanner.py script
 - **scanner.py**
   Scanner script
