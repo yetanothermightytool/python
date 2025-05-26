@@ -12,6 +12,15 @@ This folder contains a set of Python scripts for running a scan against a filesy
 ## Prerequisites
 Some preparations are required for this script to run. 
 
+### Python Modules
+The following Python modules are not part of the standard library and must be installed separately using pip.
+- requests
+- cryptography (for cryptography.fernet.Fernet)
+- colorama
+- yara (usually installed via yara-python)
+
+
+
 ### Prepare the script directory
 ```bash
 mkdir ~/vbr-scanner
