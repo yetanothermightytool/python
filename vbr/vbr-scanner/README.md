@@ -21,10 +21,11 @@ The following Python modules are not part of the standard library and must be in
 
 
 
-### Prepare the script directory
+### Prepare the script directory and YARA rules directory
 ```bash
 mkdir ~/vbr-scanner
 cd ~/vbr-scanner
+mkdir yara_rules
 ```
 ### Credentials
 Save the keyfiles for the REST API user to be used with this [script.](https://github.com/yetanothermightytool/python/tree/main/misc/fernet). Administrator is stored as the default user in the vbr-scanner Python script.
@@ -39,6 +40,9 @@ Save the following scripts in the script folder:
   Initializes and fills the SQLite database (badfiles.db)
 - **import_malwarebazaar.py**
   Imports malware hashes from CSV
+
+### YARA Rules
+Save the YARA files in the script folder directory yara_rules. (File extensions .yar and .yara).
 
 ### Database
 The script loads the contents of the database into memory during runtime. There are currently two tables, lobas and malwarebazaar. The lolbas table contains the binaries that malicious actors frequently use. They perform actions that do not correspond to their original purpose. This script checks whether one of the files is outside its “natural habitat”. Download the [CSV file](https://lolbas-project.github.io/api/) and save it as lolbin_hashes.csv to the script folder.
@@ -58,11 +62,17 @@ Additional tables might be added in the future.
 ## The Scan Scripts
 There are two scripts for scanning. The first script takes over the part of the Veeam Data Integration API and then triggers the scan script. The scan script itself does the “hard work”.
 
-## data-integration-api.py script and parameters
+## vbr-scanner.py script and parameters
 The following parameters must be passed to the script
 
 - `--host2scan`
-_(mandatory)_ Hostname for which the backup must be presented.
+_(optional)_ Hostname for which the backups must be presented.
+- `--repo2scan`
+_(optional)_ Repository name for which the hosts and restore points are retreved. Can be combined with --all.
+- `--all`
+_(optional)_ Scans the latest restore point of all valid hosts in the specified repository. Recommended to use with --iscsi for better performance. Supported platforms are VMware, Hyper-V Windows Agent, Linux Agent.
+- `--maxhosts`
+_(optoinal)_ The maximum number of hosts to be scanned in parallel when using --all. (Default 1)
 - `--workers`
 _(mandatory)_ The number of workers to use for the scanning process.
 - `--iscsi`
@@ -70,9 +80,14 @@ _(optional)_ Present the backups using iSCSI. Only filesystems with the NTFS, ex
 - `--yaramode`
 _(optional)_ YARA scan mode - off (default), all, suspicious (scans only files that show indicators of compromise), content (Targets commont document/text files to detecte sensitive data patterns (e.g. PII, credentials) 
 
-### Example
+### Examples
+Scan host win-server-01. Restore points are presented using iSCSI.
 ```bash
 sudo ./vbr-scanner.py --host2scan win-server-01 --workers 8 --iscsi
+```
+Scan the latest restore point of all suppored hosts from Veeam Repository "Repository 01". Triggers a YARA scan, when a suspicious file is found. Restore points are presented using iSCSI.
+```bash
+sudo ./vbr-scanner.py --repo2scan "Repository 01" --workers 8 --yaramode suspicious --iscsi
 ```
 
 ### Scanning Process Details
@@ -123,6 +138,7 @@ _(optional)_ YARA scan mode (off, all, suspicious, content)
 
 ## Version History
 - 1.1 (June 11 2025)
+  - Repo2Scan - Scan specific or all hosts found in a specific Veeam Repository
   - YARA Scan - New argument yaramode
   - YARA scan in scanner.py 
 - 1.0 (May 19th 2025)
