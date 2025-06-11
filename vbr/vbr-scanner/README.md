@@ -2,7 +2,7 @@
 
 ## Version Information
 ~~~~
-Version: 1.0 (May 19th 2025)
+Version: 1.1 (June 11 2025)
 Requires: Veeam Backup & Replication v12.3.1 & Linux & Python 3.1+
 Author: Stephan "Steve" Herzig
 ~~~~
@@ -67,6 +67,8 @@ _(mandatory)_ Hostname for which the backup must be presented.
 _(mandatory)_ The number of workers to use for the scanning process.
 - `--iscsi`
 _(optional)_ Present the backups using iSCSI. Only filesystems with the NTFS, ext4 and xfs filesystem can be scanned.
+- `--yaramode`
+_(optional)_ YARA scan mode - off (default), all, suspicious (scans only files that show indicators of compromise), content (Targets commont document/text files to detecte sensitive data patterns (e.g. PII, credentials) 
 
 ### Example
 ```bash
@@ -98,21 +100,32 @@ The Data Integration API script is not using all the available scanner.py parame
 - Workers		Default = Multiprocessing CPU Count / 2
 
 Optional Parameters
-- Filetypes		Comma-separated list of file extensions (e.g., .exe,.dll)")
-- Maxsize		Maximum file size in MB
-- Exclude		Experimental Comma-separated list of directories to exclude (partial paths)
-- CSV			Save results to this CSV file
-- Verbose		Print all scanned files, not just matches
-- Logfile			Path to logfile for matches (might get removed)
+- `--Filetypes`
+_(optional)_ Comma-separated list of file extensions (e.g., .exe,.dll)")
+- `--Maxsize`
+_(optional)_ Maximum file size in MB
+- `--Exclude`
+_(optional)_ Experimental Comma-separated list of directories to exclude (partial paths)
+- `--CSV`
+_(optional)_ Save results to this CSV file
+- `--Verbose`
+_(optional)_ Print all scanned files, not just matches
+- `--Logfile`
+_(optional)_ Path to logfile for matches (might get removed)
+- `--yara`
+_(optional)_ YARA scan mode (off, all, suspicious, content)
 
 ## Possible improvements
-- YARA Scan
+
 - Bloom filter support to improve memory efficiency when handling large hash sets.
 - Mark the scanned restore point as infected in Veeam Backup & Replication.
 - And a few other nice things that I'm currently researching.
 
 ## Version History
-- 1.0
+- 1.1 (June 11 2025)
+  - YARA Scan - New argument yaramode
+  - YARA scan in scanner.py 
+- 1.0 (May 19th 2025)
   - Initial version
     
 ## Disclaimer
