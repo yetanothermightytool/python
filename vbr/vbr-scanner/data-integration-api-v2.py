@@ -16,7 +16,7 @@ from dateutil import parser as dtparser
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Script variables
-api_url = "https://172.25.186.210:9419"
+api_url = "https://10.11.12.14:9419"
 api_version = "1.2-rev1"
 mnt_base = "/mnt"
 results_dir = "/tmp/output"
@@ -26,7 +26,7 @@ scanner_path = "./scanner.py"
 def get_local_ip():
    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
    try:
-       s.connect(("10.10.10.100", 80))
+       s.connect(("1.1.1.1", 80))
        return s.getsockname()[0]
    finally:
        s.close()
@@ -148,7 +148,9 @@ def run_store(mount_path, host2scan):
    cmd = [
        "python3", store_script,
        "--mount", mount_path,
-       "--hostname", host2scan
+       "--hostname", host2scan,
+       "--restorepoint-id", RESTORE_ID,
+       "--rp-timestamp", RESTORE_TS
    ]
    print(f"💾 Indexing files from mount: {mount_path}")
    subprocess.run(cmd)
@@ -348,6 +350,10 @@ def main():
    selected_rp      = restorePoint["data"][selected]
    ts               = dtparser.isoparse(selected_rp["creationTime"]).strftime("%Y-%m-%d %H:%M:%S")
    restore_point_id = selected_rp["id"]
+   global RESTORE_ID
+   global RESTORE_TS
+   RESTORE_ID = restore_point_id
+   RESTORE_TS = ts
    print(f"✅ Selected restore point id {restore_point_id} created on {ts}")
    do_mount_scan(token, scanhost, local_ip, restore_point_id, args.host2scan, args.iscsi, args.workers, args.yaramode, args)
    return token
@@ -357,3 +363,4 @@ if __name__ == "__main__":
    if token:
        print("🚪 Logout...")
        post_logout(api_url, token)
+
