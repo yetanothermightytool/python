@@ -16,7 +16,7 @@ from dateutil import parser as dtparser
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Script variables
-api_url = "https://10.11.12.14:9419"
+api_url = "https://172.25.186.210:9419"
 api_version = "1.2-rev1"
 mnt_base = "/mnt"
 results_dir = "/tmp/output"
@@ -26,7 +26,7 @@ scanner_path = "./scanner.py"
 def get_local_ip():
    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
    try:
-       s.connect(("1.1.1.1", 80))
+       s.connect(("10.10.10.100", 80))
        return s.getsockname()[0]
    finally:
        s.close()
@@ -154,7 +154,7 @@ def run_store(mount_path, host2scan):
    subprocess.run(cmd)
 
 # Run Scan on disks mounted via iSCSI
-def run_iscsi_scan(mount_id, session_info, host2scan, workers):
+def run_iscsi_scan(mount_id, session_info, host2scan, workers, yaramode, args):
    before = subprocess.check_output("lsblk -nd -o NAME", shell=True).decode().splitlines()
    ip = session_info["serverIps"][0]
    port = session_info["serverPort"]
@@ -204,7 +204,7 @@ def run_iscsi_scan(mount_id, session_info, host2scan, workers):
    subprocess.run(f"sudo iscsiadm -m node -p {ip}:{port} -o delete", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 # Data Integration API Main Function - Default uses FUSE
-def do_mount_scan(token, scanhost, local_ip, restore_point_id, host_name, use_iscsi, workers, yaramode):
+def do_mount_scan(token, scanhost, local_ip, restore_point_id, host_name, use_iscsi, workers, yaramode, args):
    mount_body = {
        "restorePointId": restore_point_id,
        "type": "ISCSITarget" if use_iscsi else "FUSELinuxMount",
@@ -233,7 +233,7 @@ def do_mount_scan(token, scanhost, local_ip, restore_point_id, host_name, use_is
            return
 
    if use_iscsi:
-       run_iscsi_scan(mount_id, mount_info.get("info", {}), host_name, workers)
+       run_iscsi_scan(mount_id, mount_info.get("info", {}), host_name, workers, yaramode, args)
    else:
        all_mounts = []
        for disk in mount_info.get("info", {}).get("disks", []):
@@ -315,7 +315,7 @@ def main():
                        restore_id = rp["data"][0]["id"]
                        ts = dtparser.isoparse(rp["data"][0]["creationTime"]).strftime("%Y-%m-%d %H:%M:%S")
                        print(f"🖥️ Scanning host {host} (latest restore point {ts})")
-                       futures.append(executor.submit(do_mount_scan, token, scanhost, local_ip, restore_id, host, args.iscsi, args.workers, args.yaramode))
+                       futures.append(executor.submit(do_mount_scan, token, scanhost, local_ip, restore_id, host, args.iscsi, args.workers, args.yaramode, args))
                for f in concurrent.futures.as_completed(futures):
                    f.result()
            return token
@@ -349,7 +349,7 @@ def main():
    ts               = dtparser.isoparse(selected_rp["creationTime"]).strftime("%Y-%m-%d %H:%M:%S")
    restore_point_id = selected_rp["id"]
    print(f"✅ Selected restore point id {restore_point_id} created on {ts}")
-   do_mount_scan(token, scanhost, local_ip, restore_point_id, args.host2scan, args.iscsi, args.workers, args.yaramode)
+   do_mount_scan(token, scanhost, local_ip, restore_point_id, args.host2scan, args.iscsi, args.workers, args.yaramode, args)
    return token
 
 if __name__ == "__main__":
@@ -357,4 +357,3 @@ if __name__ == "__main__":
    if token:
        print("🚪 Logout...")
        post_logout(api_url, token)
-
