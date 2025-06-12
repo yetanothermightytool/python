@@ -16,7 +16,7 @@ from dateutil import parser as dtparser
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Script variables
-api_url = "https://10.11.12.14:9419"
+api_url = "https://host01:9419"
 api_version = "1.2-rev1"
 mnt_base = "/mnt"
 results_dir = "/tmp/output"
@@ -140,7 +140,7 @@ def run_scanner(mount_path, host2scan, workers, yaramode):
    subprocess.run(cmd)
 
 # Run Store Function
-def run_store(mount_path, host2scan):
+def run_store(mount_path, host2scan, restore_id, restore_ts):
    store_script = "./store.py"
    if not os.path.exists(store_script):
        print("❌ store.py not found.")
@@ -149,8 +149,8 @@ def run_store(mount_path, host2scan):
        "python3", store_script,
        "--mount", mount_path,
        "--hostname", host2scan,
-       "--restorepoint-id", RESTORE_ID,
-       "--rp-timestamp", RESTORE_TS
+       "--restorepoint-id", restore_id,
+       "--rp-timestamp", restore_ts
    ]
    print(f"💾 Indexing files from mount: {mount_path}")
    subprocess.run(cmd)
@@ -195,7 +195,7 @@ def run_iscsi_scan(mount_id, session_info, host2scan, workers, yaramode, args):
         if args.scan:
             run_scanner(mnt_path, host2scan, workers, yaramode)
         if args.store:
-            run_store(mnt_path, host2scan)
+            run_store(mnt_path, host2scan, restore_id, restore_ts)
    time.sleep(10)
 
    print(f"[{host2scan}] 🧹 Cleaning up...")
@@ -206,7 +206,7 @@ def run_iscsi_scan(mount_id, session_info, host2scan, workers, yaramode, args):
    subprocess.run(f"sudo iscsiadm -m node -p {ip}:{port} -o delete", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 # Data Integration API Main Function - Default uses FUSE
-def do_mount_scan(token, scanhost, local_ip, restore_point_id, host_name, use_iscsi, workers, yaramode, args):
+def do_mount_scan(token, scanhost, local_ip, restore_point_id, host_name, use_iscsi, workers, yaramode, args, restore_ts):
    mount_body = {
        "restorePointId": restore_point_id,
        "type": "ISCSITarget" if use_iscsi else "FUSELinuxMount",
@@ -246,7 +246,7 @@ def do_mount_scan(token, scanhost, local_ip, restore_point_id, host_name, use_is
                  log_message(host_name, f"Running scan on {path} [FUSE]...")
                  run_scanner(path, host_name, workers, yaramode)
             if args.store:
-                 run_store(path, host_name)
+                 run_store(path, host_name, restore_point_id, restore_ts)
    time.sleep(10)
 
    print(f"[{host_name}] 🛑 Unpublishing...")
@@ -317,7 +317,7 @@ def main():
                        restore_id = rp["data"][0]["id"]
                        ts = dtparser.isoparse(rp["data"][0]["creationTime"]).strftime("%Y-%m-%d %H:%M:%S")
                        print(f"🖥️ Scanning host {host} (latest restore point {ts})")
-                       futures.append(executor.submit(do_mount_scan, token, scanhost, local_ip, restore_id, host, args.iscsi, args.workers, args.yaramode, args))
+                       futures.append(executor.submit(do_mount_scan, token, scanhost, local_ip, restore_id, host, args.iscsi, args.workers, args.yaramode, args, ts))
                for f in concurrent.futures.as_completed(futures):
                    f.result()
            return token
@@ -330,6 +330,45 @@ def main():
        })
        args.host2scan = hostnames[selected]
        print(f"🖥️ Selected host {args.host2scan}")
+
+   elif args.host2scan:
+       rp_query = {
+           "skip": "0",
+           "limit": "10",
+           "orderColumn": "CreationTime",
+           "orderAsc": "false",
+           "nameFilter": args.host2scan
+       }
+   print("📂 Get 10 latest Restore Points for " + args.host2scan + "....")
+   restorePoint = get_veeam_rest_api(api_url, "v1/restorePoints", token, params=rp_query)
+   if not restorePoint.get("data"):
+       print("❌ No restore points found.")
+       return token
+
+   display_restore_points(restorePoint)
+   selected = select_restore_point(restorePoint)
+   selected_rp = restorePoint["data"][selected]
+   ts = dtparser.isoparse(selected_rp["creationTime"]).strftime("%Y-%m-%d %H:%M:%S")
+   restore_point_id = selected_rp["id"]
+
+   global RESTORE_ID
+   global RESTORE_TS
+   RESTORE_ID = restore_point_id
+   RESTORE_TS = ts
+
+   print(f"✅ Selected restore point id {restore_point_id} created on {ts}")
+   do_mount_scan(
+       token,
+       scanhost,
+       local_ip,
+       restore_point_id,
+       args.host2scan,
+       args.iscsi,
+       args.workers,
+       args.yaramode,
+       args
+   )
+       return token
 
    elif not args.host2scan:
        print("❌ You must specify either --host2scan or --repo2scan")
@@ -355,7 +394,7 @@ def main():
    RESTORE_ID = restore_point_id
    RESTORE_TS = ts
    print(f"✅ Selected restore point id {restore_point_id} created on {ts}")
-   do_mount_scan(token, scanhost, local_ip, restore_point_id, args.host2scan, args.iscsi, args.workers, args.yaramode, args)
+   do_mount_scan(token, scanhost, local_ip, restore_point_id, args.host2scan, args.iscsi, args.workers, args.yaramode, args, ts)
    return token
 
 if __name__ == "__main__":
