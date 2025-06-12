@@ -16,7 +16,7 @@ from dateutil import parser as dtparser
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Script variables
-api_url = "https://10.20.30.40:9419"
+api_url = "https://100.200.30.40:9419"
 api_version = "1.2-rev1"
 mnt_base = "/mnt"
 results_dir = "/tmp/output"
@@ -140,7 +140,7 @@ def run_scanner(mount_path, host2scan, workers, yaramode):
    subprocess.run(cmd)
 
 # Run Scan on disks mounted via iSCSI
-def run_iscsi_scan(mount_id, session_info, host2scan, workers):
+def run_iscsi_scan(mount_id, session_info, host2scan, workers, yaramode):
    before = subprocess.check_output("lsblk -nd -o NAME", shell=True).decode().splitlines()
    ip = session_info["serverIps"][0]
    port = session_info["serverPort"]
@@ -216,7 +216,7 @@ def do_mount_scan(token, scanhost, local_ip, restore_point_id, host_name, use_is
            return
 
    if use_iscsi:
-       run_iscsi_scan(mount_id, mount_info.get("info", {}), host_name, workers)
+       run_iscsi_scan(mount_id, mount_info.get("info", {}), host_name, workers, yaramode)
    else:
        all_mounts = []
        for disk in mount_info.get("info", {}).get("disks", []):
@@ -335,4 +335,3 @@ if __name__ == "__main__":
    if token:
        print("🚪 Logout...")
        post_logout(api_url, token)
-
