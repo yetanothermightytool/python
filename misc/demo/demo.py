@@ -204,7 +204,8 @@ def main():
        }
 
        if args.iscsi:
-           time.sleep(30)
+           before = subprocess.check_output("lsblk -nd -o NAME", shell=True).decode().splitlines()
+		   time.sleep(30)
            mount_info = get_veeam_rest_api(api_url, f"v1/dataIntegration/{mount_id}", token)
            ip = mount_info["info"]["serverIps"][0]
            port = mount_info["info"]["serverPort"]
@@ -213,7 +214,6 @@ def main():
            session["iscsi_port"] = port
 
            # Mount newly appeared devices
-           before = subprocess.check_output("lsblk -nd -o NAME", shell=True).decode().splitlines()
            time.sleep(5)
            after = subprocess.check_output("lsblk -nd -o NAME", shell=True).decode().splitlines()
            new_disks = [dev for dev in after if dev not in before]
