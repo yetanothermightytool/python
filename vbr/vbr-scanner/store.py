@@ -11,12 +11,14 @@ from pathlib import Path
 
 CHUNK_SIZE = 50
 
+# Those extents are included in the scan
 DEFAULT_BINARY_EXTS = [
    ".exe", ".dll", ".sys", ".msi", ".bat", ".cmd", ".ps1",
    ".sh", ".bin", ".run", ".so", ".out", ".deb", ".rpm",
    ".jar", ".pyc", ".apk", ".com"
 ]
 
+# Extents to classify the filetype. Will be stored in the database
 EXECUTABLE_EXTS = {'.exe', '.dll', '.bin', '.so', '.elf', '.sh', '.bat', '.cmd', '.ps1', '.apk', '.com'}
 SCRIPT_EXTS     = {'.py', '.js', '.vbs', '.pl', '.rb', '.ps1', '.sh', '.bat', '.cmd'}
 IMAGE_EXTS      = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff'}
