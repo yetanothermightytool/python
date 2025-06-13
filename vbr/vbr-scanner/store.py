@@ -23,6 +23,7 @@ IMAGE_EXTS      = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff'}
 DOCUMENT_EXTS   = {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.rtf'}
 ARCHIVE_EXTS    = {'.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz'}
 
+# Classifies the file type based on its extension
 def detect_filetype(extension):
    ext = extension.lower()
    if ext in EXECUTABLE_EXTS:
@@ -38,6 +39,7 @@ def detect_filetype(extension):
    else:
        return "other"
 
+# Parses command-line arguments and returns them as an object (New approach)
 def parse_args():
    parser = argparse.ArgumentParser(description="Index binary files into SQLite")
    parser.add_argument("--mount", required=True, help="Mounted path to scan")
@@ -52,6 +54,7 @@ def parse_args():
    parser.add_argument("--verbose", action="store_true", help="Print progress info")
    return parser.parse_args()
 
+# Initializes the SQLite database and creates tables and indexes if needed
 def init_db(path):
    conn = sqlite3.connect(path)
    cur = conn.cursor()
@@ -83,6 +86,7 @@ def init_db(path):
    conn.commit()
    conn.close()
 
+# Calculates the SHA-256 hash of a file
 def sha256_file(path):
    h = hashlib.sha256()
    try:
@@ -93,6 +97,7 @@ def sha256_file(path):
    except:
        return None
 
+# Gets all matching files based on type, size, and exclusion filters (recursive)
 def get_files(root, filetypes, maxsize, excludes):
    result = []
    normalized_excludes = [ex.lower().replace("\\", os.sep).replace("/", os.sep) for ex in excludes]
@@ -116,6 +121,7 @@ def get_files(root, filetypes, maxsize, excludes):
            result.append(full_path)
    return result
 
+# Checks if the file is marked as executable in the file system
 def is_executable(path):
    try:
        st = os.stat(path)
@@ -123,6 +129,7 @@ def is_executable(path):
    except:
        return False
 
+# Gathers metadata like filename, size, timestamps, hash, and file type for a single file
 def extract_metadata(path):
    try:
        stat_result = os.stat(path)
@@ -141,6 +148,7 @@ def extract_metadata(path):
    except:
        return None
 
+# Hashes and processes each file and sends metadata to result queue.
 def worker(chunk_queue, result_queue, hostname, restorepoint_id, rp_timestamp):
    while True:
        try:
@@ -156,6 +164,7 @@ def worker(chunk_queue, result_queue, hostname, restorepoint_id, rp_timestamp):
                result_queue.put(meta)
        chunk_queue.task_done()
 
+# Reads results from the queue and inserts them into the database
 def write_results(result_queue, db_path):
    conn = sqlite3.connect(db_path)
    cur = conn.cursor()
@@ -182,6 +191,7 @@ def write_results(result_queue, db_path):
    conn.close()
    return inserted
 
+# The magic starts here
 def main():
    args = parse_args()
 
@@ -229,4 +239,3 @@ def main():
 
 if __name__ == "__main__":
    main()
-
