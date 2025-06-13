@@ -136,6 +136,12 @@ def handle_unmount(token, host):
                post_veeam_rest_api(api_url, f"v1/dataIntegration/{s['mount_id']}/unpublish", token, body={})
                if s["type"] == "ISCSITarget" and s.get("iscsi_ip") and s.get("iscsi_port"):
                    run_iscsi_logout(s["iscsi_ip"], s["iscsi_port"])
+		   
+		   if s.get("mount_paths"):
+                       for path in s["mount_paths"]:
+                           print(f"[{host}] 🔽 Unmounting {path}")
+                           subprocess.run(f"sudo umount {path}", shell=True)
+                           subprocess.run(f"sudo rmdir {path}", shell=True)
            except Exception as e:
                print(f"[{host}] ⚠️ Failed to unpublish: {e}")
        else:
