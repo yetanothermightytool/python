@@ -236,6 +236,11 @@ def main():
                        print(f"[{host}] ⚠️ Skipping {dev_path}: {e}")
        if mounted_paths:
            session["mount_paths"] = mounted_paths
+       
+       sessions = load_sessions()
+       sessions = [s for s in sessions if s["host"] != host]
+       sessions.append(session)
+       save_sessions(sessions)
 
    if args.host2scan and args.start:
        rp_query = {
