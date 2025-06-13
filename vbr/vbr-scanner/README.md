@@ -173,6 +173,8 @@ The script connects to both SQLite databases and performs several queries:
 - Compares file sizes to detect unexpected changes across backups.
 
 If matches are found, results are printed as readable tables. File paths are shortened for display, and hashes are truncated for readability. If no issues are found, a green checkmark is printed.
+
+![alt text](https://github.com/yetanothermightytool/python/blob/main/vbr/vbr-scanner/images/analyzer-result.png)
  
 ## Possible improvements
 
