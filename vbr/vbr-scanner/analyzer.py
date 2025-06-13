@@ -7,6 +7,7 @@ from colorama import Fore, Style, init
 
 init(autoreset=True)
 
+# Converts the file size from bytes to a readable format
 def human_readable_size(size_bytes):
    for unit in ['B','KB','MB','GB','TB']:
        if abs(size_bytes) < 1024.0:
@@ -14,9 +15,11 @@ def human_readable_size(size_bytes):
        size_bytes /= 1024.0
    return f"{size_bytes:.1f} PB"
 
+# Shortens the SHA256 hash to the first 12 characters
 def shorten_hash(hash_str, length=12):
    return hash_str[:length] + "…" if len(hash_str) > length else hash_str
 
+# Here the magic happens. Connects to the databases, runs all queries, and prints the results
 def run_analysis():
    db_path = "file_index.db"
    bad_db_path = "badfiles.db"
