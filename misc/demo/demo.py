@@ -184,6 +184,7 @@ def main():
 
    def mount_restore_point(host, rp_id, ts):
        mount_type = "ISCSITarget" if args.iscsi else "FUSELinuxMount"
+       mounted_paths = []
        mount_body = {
            "restorePointId": rp_id,
            "type": mount_type,
@@ -211,10 +212,30 @@ def main():
            session["iscsi_ip"] = ip
            session["iscsi_port"] = port
 
-       sessions = load_sessions()
-       sessions = [s for s in sessions if s["host"] != host]
-       sessions.append(session)
-       save_sessions(sessions)
+           # Mount newly appeared devices
+           before = subprocess.check_output("lsblk -nd -o NAME", shell=True).decode().splitlines()
+           time.sleep(5)
+           after = subprocess.check_output("lsblk -nd -o NAME", shell=True).decode().splitlines()
+           new_disks = [dev for dev in after if dev not in before]
+
+           mounted_paths = []
+           for dev in new_disks:
+               for part in range(1, 5):
+                   dev_path = f"/dev/{dev}{part}"
+                   if not os.path.exists(dev_path):
+                       continue
+                   try:
+                       fs_type = subprocess.check_output(f"lsblk -no FSTYPE {dev_path}", shell=True).decode().strip()
+                       if fs_type in ("ntfs", "xfs", "ext4"):
+                           mnt_path = os.path.join(mnt_base, f"{host}_{dev}{part}")
+                           os.makedirs(mnt_path, exist_ok=True)
+                           subprocess.run(f"sudo mount -t {fs_type} {dev_path} {mnt_path}", shell=True, check=False)
+                           print(f"[{host}] ✅ Mounted {dev_path} -> {mnt_path}")
+                           mounted_paths.append(mnt_path)
+                   except Exception as e:
+                       print(f"[{host}] ⚠️ Skipping {dev_path}: {e}")
+       if mounted_paths:
+           session["mount_paths"] = mounted_paths
 
    if args.host2scan and args.start:
        rp_query = {
