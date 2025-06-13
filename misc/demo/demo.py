@@ -1,4 +1,3 @@
-administrator@sherz-lnxremote-01:~/store$ cat demo.py.thisisit
 #!/usr/bin/env python3
 import os
 import subprocess
@@ -273,4 +272,3 @@ def main():
 
 if __name__ == "__main__":
    main()
-
