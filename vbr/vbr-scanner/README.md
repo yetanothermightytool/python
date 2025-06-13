@@ -20,17 +20,16 @@ The following Python modules are not part of the standard library and must be in
 - yara (usually installed via yara-python)
 
 
-
 ### Prepare the script directory and YARA rules directory
 ```bash
 mkdir ~/vbr-scanner
 cd ~/vbr-scanner
 mkdir yara_rules
 ```
-### Credentials
+## Credentials
 Save the keyfiles for the REST API user to be used with this [script.](https://github.com/yetanothermightytool/python/tree/main/misc/fernet). Administrator is stored as the default user in the vbr-scanner Python script.
 
-### Store script files
+## Store script files
 Save the following scripts in the script folder:
 - **vbr-scanner.py**
   Executes the mount via the Veeam REST API and then triggers the scanner.py script
@@ -41,10 +40,10 @@ Save the following scripts in the script folder:
 - **import_malwarebazaar.py**
   Imports malware hashes from CSV
 
-### YARA Rules
+## YARA Rules
 Save the YARA files in the script folder directory yara_rules. (File extensions .yar and .yara).
 
-### Database
+## Database
 The script loads the contents of the database into memory during runtime. There are currently two tables, lobas and malwarebazaar. The lolbas table contains the binaries that malicious actors frequently use. They perform actions that do not correspond to their original purpose. This script checks whether one of the files is outside its “natural habitat”. Download the [CSV file](https://lolbas-project.github.io/api/) and save it as lolbin_hashes.csv to the script folder.
 
 
@@ -72,7 +71,7 @@ Repository name for which the hosts and restore points are retreved. Can be comb
 - `--all`
 _(optional)_ Scans the latest restore point of all valid hosts in the specified repository. Recommended to use with --iscsi for better performance. Supported platforms are VMware, Hyper-V, Windows Agent, Linux Agent.
 - `--maxhosts`
-_(optoinal)_ The maximum number of hosts to be scanned in parallel when using --all. (Default 1)
+_(optional)_ The maximum number of hosts to be scanned in parallel when using --all. (Default 1)
 - `--workers`
 _(mandatory)_ The number of workers to use for the scanning process.
 - `--iscsi`
@@ -89,7 +88,6 @@ Scan the latest restore point of all suppored hosts from Veeam Repository "Repos
 ```bash
 sudo ./vbr-scanner.py --repo2scan "Repository 01" --workers 8 --yaramode suspicious --iscsi
 ```
-
 ### Scanning Process Details
 The following folders are excluded from the scanning process. You can adjust the list using the existing DEFAULT_EXCLUDES variable.
 
@@ -130,6 +128,40 @@ _(optional)_ Path to logfile for matches (might get removed)
 - `--yara`
 _(optional)_ YARA scan mode (off, all, suspicious, content)
 
+## store.py script details (Version 2.0)
+This script scans the mounted file system and collects detailed metadata for selected files. It calculates a SHA-256 hash for each file and stores all data in a local SQLite database. If the database does not exist, it is automatically created during the first run. The metadata stored includes file name, path, size, timestamps, extension, file type, and whether the file is executable. Each entry is tagged with a hostname, restore point ID, and timestamp, making later comparisons across backups possible.
+The script supports parallel processing and can speed up scanning using multiple CPU cores. Filters can be applied to limit which files are scanned: only specific file types (like .exe or .dll), a maximum file size, and folders to exclude. 
+The script extracts key information for each file that matches the filters and calculates its SHA-256 hash. All collected data is inserted into the database, unless an entry with the same hostname and hash already exists.
+
+### File Type Detection (Simple explanation)
+The script detects files based on their extensions:
+- Executables: .exe, .dll, .bin, .sh, etc. 
+- Scripts: .py, .js, .ps1, .bat 
+- Images: .jpg, .png, .gif, etc. 
+- Documents: .pdf, .docx, .txt, etc. 
+- Archives: .zip, .tar, .7z, etc.
+If a file doesn’t match known types, it is labeled "other".
+
+### Argument Description
+- `--mount`
+_(mandatory)_ Root directory to scan
+- `--hostname`
+_(mandadory)_ The name of the host to which this data belongs
+- `--restorepoint-id`
+_(mandatory)_ The Veeam restore point ID
+- `--rp-timestamp`
+_(mandatory)_ Timestamp of the restore point
+- `--Filetypes`
+_(optional)_ Comma-separated file extensions to scan
+- `--workers`
+_(optional)_ Number of parallel worker processes to use (default: half of CPU cores)
+- `--maxsize`
+_(optional)_ Max file size in MB to include (e.g., skip huge ISO files)
+- `--exclude`
+_(optional)_ Comma-separated list of folder names to skip 
+- `--db`
+_(optional)_ SQLite DB path (default is file_index.db)
+ 
 ## Possible improvements
 
 - Bloom filter support to improve memory efficiency when handling large hash sets.
