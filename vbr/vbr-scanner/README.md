@@ -161,6 +161,18 @@ _(optional)_ Max file size in MB to include (e.g., skip huge ISO files)
 _(optional)_ Comma-separated list of folder names to skip 
 - `--db`
 _(optional)_ SQLite DB path (default is file_index.db)
+
+## analyzer.py script (Version 2.0)
+This script analyzes previously indexed file metadata stored in file_index.db. It compares the data against known malware hashes from badfiles.db and checks for suspicious or changing file patterns across restore points. This helps to detect possible malware infections, tampering, or unusual activity on backup data.
+
+The script connects to both SQLite databases and performs several queries:
+- Looks for files with known malicious hashes.
+- Detects .exe files stored in suspicious paths (like AppData).
+- Finds large executable files over 50 MB.
+- Compares hashes of files with the same name on the same host to detect modified content.
+- Compares file sizes to detect unexpected changes across backups.
+
+If matches are found, results are printed as readable tables. File paths are shortened for display, and hashes are truncated for readability. If no issues are found, a green checkmark is printed.
  
 ## Possible improvements
 
