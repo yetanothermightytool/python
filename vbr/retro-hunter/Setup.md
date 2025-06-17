@@ -9,6 +9,10 @@ Author: Stephan "Steve" Herzig
 ## Prerequisites
 Some preparations are required for these scripts to run. 
 
+### Veeam Backup & Replication
+You must add the Linux server on which this script is executed to the [backup infrastructure](https://helpcenter.veeam.com/docs/backup/vsphere/add_linux_server.html).
+
+
 ### Python Modules
 The following Python modules are not part of the standard library and must be installed separately using pip.
 - requests
@@ -16,7 +20,7 @@ The following Python modules are not part of the standard library and must be in
 - colorama
 - yara (usually installed via yara-python)
 - tabulate
-- more for the Streamlit dashboard.
+- +more for the Streamlit dashboard (see requirements.txt)
 
 ### Prepare the script directory and YARA rules directory
 ```bash
