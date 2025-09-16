@@ -57,7 +57,7 @@ Export report as HTML file
 ```
 Print report in JSON format
 ```bash
-./get-vbr-encryption-info.py --vbrserver 10.20.30.40 encryption-info --json | 
+./get-vbr-encryption-info.py --vbrserver 10.20.30.40 encryption-info --json
 ```
 
 ## Version History
