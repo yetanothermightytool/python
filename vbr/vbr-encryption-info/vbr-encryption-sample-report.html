@@ -1,0 +1,34 @@
+<html><head><meta charset='UTF-8'><title>VBR Encryption Report</title>
+
+    <style>
+        body { font-family: Arial, sans-serif; }
+        h2 { color: #246; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 2em;}
+        th, td { border: 1px solid #aaa; padding: 6px; }
+        th { background-color: #e0e7f1; }
+        tr:nth-child(even){background-color: #f9f9f9;}
+    </style></head><body>
+    
+<h1>Veeam Encryption Report</h1>
+<h2>Backup Server Information</h2>
+<p><b>Name:</b> vbr-server-01<br>
+<b>Version:</b> 12.3.2.3617</p>
+<h2>Backup Jobs</h2>
+<table><tr><th>Name</th><th>Type</th><th>TargetRepository</th><th>TargetRepositoryPath</th><th>EncryptionStatus</th><th>KeyType</th><th>EncryptionPasswordId</th></tr>
+<tr><td>Demo Entra ID</td><td>EntraIDTenantBackup</td><td>-</td><td>-</td><td>Unencrypted</td><td>-</td><td>-</td></tr>
+<tr><td>Demo Entra ID Log</td><td>EntraIDAuditLogBackup</td><td>Default Backup Repository</td><td>C:\Backup</td><td>Enabled</td><td>ByUserPassword</td><td>77777777-613d-4509-ae16-bf1f7fc45be7</td></tr>
+<tr><td>Demo Guest Indexing</td><td>Backup</td><td>Default Backup Repository</td><td>C:\Backup</td><td>Enabled</td><td>ByUserPassword</td><td>88888888-775b-4747-a9bc-3fe1668317e1</td></tr>
+<tr><td>Demo VM 01</td><td>Backup</td><td>Default Backup Repository</td><td>C:\Backup</td><td>Enabled</td><td>ByUserPassword</td><td>88888888-775b-4747-a9bc-3fe1668317e11</td></tr>
+</table>
+<h2>Certificates</h2>
+<table><tr><th>Thumbprint</th><th>Subject</th><th>ValidFrom</th><th>ValidBy</th></tr>
+<tr><td>555CAC9A0ED8BDF4FFFFD8E03375BCB7783D37A0</td><td>CN=Veeam Backup Server Certificate</td><td>2025-04-14T12:46:28+00:00</td><td>2035-04-14T12:46:28+00:00</td></tr>
+</table>
+<h2>Encryption Passwords</h2>
+<table><tr><th>Description</th><th>ModificationDate</th><th>Id</th></tr>
+<tr><td>entra-enc-key</td><td>2025-09-15T12:21:16.540942+00:00</td><td>77777777-613d-4509-ae16-bf1f7fc45be7</td></tr>
+<tr><td>vm-enc-key</td><td>2025-09-15T12:21:52.735271+00:00</td><td>88888888-775b-4747-a9bc-3fe1668317e1</td></tr>
+</table>
+<h2>KMS Servers</h2>
+<p>No data found.</p>
+</body></html>
