@@ -60,6 +60,10 @@ Print report in JSON format
 ./get-vbr-encryption-info.py --vbrserver 10.20.30.40 encryption-info --json
 ```
 
+## Sample Report
+You can view a live sample report here:  
+[Open Sample Report](https://github.com/yetanothermightytool/python/blob/main/vbr/vbr-encryption-info/vbr-encryption-sample-report.html)
+
 ## Version History
 - 1.0 (Sep 16 2025)
   - Initial version
