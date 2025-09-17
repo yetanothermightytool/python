@@ -33,11 +33,11 @@ Save the keyfiles for the REST API user to be used with this [script.](https://g
 - `--vbrserver <VBR_SERVER>`
 Hostname or IP address of the VBR server (required).
 
-Commands
+### Commands
 - `encryption-info`
 Show encryption and key information. There might be more commands/modules to be integrated in the future.
 
-Output Options (mutually exclusive)
+Output Options for encryption-info (mutually exclusive)
 - **Default (no option given)
 Prints a human-readable table in the terminal.
 - `--html`
@@ -71,7 +71,3 @@ You can view a live sample report here:
 ## Disclaimer
 
 This script is not officially supported by Veeam Software. Use it at your own risk.
-
-
-
-
