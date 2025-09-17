@@ -109,7 +109,7 @@ def job_info(api_url, token):
            ["Name", "Type", "Backup Mode"]
        )
    else:
-       print("\nNo Jos with backup mode 'Reverse Incremental' found.")
+       print("\nNo backup jobs with backup mode 'Reverse Incremental' were found.")
 
 def main():
    parser = argparse.ArgumentParser(description="Veeam Job Checker")
