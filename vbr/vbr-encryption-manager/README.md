@@ -65,7 +65,7 @@ Print report in JSON format
 ```
 ## Sample Report
 You can view a live sample report here:  
-[Open Sample Report](https://github.com/yetanothermightytool/python/blob/main/vbr/vbr-encryption-info/vbr-encryption-sample-report.html)
+[Open Sample Report](https://github.com/yetanothermightytool/python/blob/main/vbr/vbr-encryption-manager/vbr-encryption-sample-report.html)
 
 ## Key Manager
 
