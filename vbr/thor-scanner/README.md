@@ -61,7 +61,8 @@ Automated mode (always the latest restore point):
 
 ## Notes
 - Scan results are written to /tmp/output.
-- Tested on Ubuntu 24.04 
+- Tested on Ubuntu 24.04
+- Why Docker! Because I want! ## The scan runs inside a container for better control and isolation. This way multiple jobs can run in parallel without interfering with each other or the host system.
 
 ## Who is Nextron and what is THOR?
 Nextron Systems specializes in forensic threat detection. Their product, THOR, is widely used by incident response and security teams to uncover attacker tools and traces that traditional solutions may miss. 
