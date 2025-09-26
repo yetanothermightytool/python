@@ -19,28 +19,27 @@ This script publishes a restore point using the **Veeam Data Integration API**, 
 Save the keyfiles for the REST API user to be used with this [script.](https://github.com/yetanothermightytool/python/tree/main/misc/fernet). The username Administrator is stored as the default user in the Python script.
 
 ### Important
-- Username & Veeam Backup & Replication Server
- Set the Veeam Backup & Replication hostname/IP address and username to query the REST API'
+Username & Veeam Backup & Replication Server
+ Set the Veeam Backup & Replication hostname/IP address and username to query the REST API'.
  ```python
 username        = "Administrator"
 api_url         = "https://vbr-host:9419"
 ```
-- The script can run **with THOR or THOR Lite**.  
- You must set the correct container image name in the script:
+
+The script can run **with THOR or THOR Lite**. Set the correct container image name in the script.
  ```python
  docker_image = "thor-lite"   # or "thor"
 ```
 
 ### Build the Docker image before running the script
-The Dockerfile and the Python script must be placed in the same folder as your THORfiles (binaries, licenssignatures, etc.
-Build the THOR (or THOR Lite) Docker image before running the script.
-'''bash
+The Dockerfile and the Python script must be placed in the same folder as your THOR files (binaries, licenssignatures, etc.
+Build the THOR (or THOR Lite) Docker image before running the script. Sample for thor-lite (Adjust the path in the Dockerfile if necessary).
+```bash
 docker build -t thor-lite .
-'''
+```
 
 ## Script Usage
-
-Make the script executable and run it directly:
+Make the script executable and run it directly.
 
 chmod +x script.py
 ./thor-scanner.py -host2scan <HOSTNAME> [--latest]
