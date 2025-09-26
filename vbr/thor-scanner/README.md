@@ -23,7 +23,7 @@ Save the keyfiles for the REST API user to be used with this [script.](https://g
  Set the Veeam Backup & Replication hostname/IP address and username to query the REST API'
  ```python
 username        = "Administrator"
-api_url         = "https://172.25.186.210:9419"
+api_url         = "https://vbr-host:9419"
 ```
 - The script can run **with THOR or THOR Lite**.  
  You must set the correct container image name in the script:
