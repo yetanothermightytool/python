@@ -24,11 +24,11 @@ Hostname for which the backups must be presented.
 - `--repo2scan`
 Repository name for which the hosts and restore points are retreved. Can be combined with --all.
 - `--all`
-_(optional)_ Scans the latest restore point of all valid hosts in the specified repository. Recommended to use with --iscsi for better performance. Supported platforms are VMware, Hyper-V, Windows Agent, Linux Agent.
+_(optional)_ Scans the latest restore point of all valid hosts in the specified repository. Supported platforms are VMware, Hyper-V, Windows Agent, Linux Agent.
 - `--maxhosts`
 _(optoinal)_ The maximum number of hosts to be scanned in parallel when using --all. (Default 1)
 - `--iscsi`
-_(optional)_ Present the backups using iSCSI. Only filesystems with the NTFS, ext4 and xfs filesystem can be scanned.
+_(optional)_ Present the backups using iSCSI. Only NTFS filesystems can be scanned.
   
 ## Disclaimer
 
