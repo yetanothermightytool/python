@@ -2,7 +2,7 @@
 
 ## Version Information
 ~~~~
-Version: 1.0 (September 26, 2025)
+Version: 1.1 (October 7, 2025)
 Requires: Veeam Backup & Replication v12.3.2 & Linux & Python 3.1+
 Author: Stephan "Steve" Herzig
 ~~~~
@@ -22,8 +22,8 @@ Save the keyfiles for the REST API user to be used with this [script.](https://g
 Username & Veeam Backup & Replication Server
  Set the Veeam Backup & Replication hostname/IP address and username to query the REST API'.
  ```python
-username        = "Administrator"
-api_url         = "https://vbr-host:9419"
+USERNAME        = "Administrator"
+API_URL         = "https://vbr-host:9419"
 ```
 
 The script can run **with THOR or THOR Lite**. Set the correct container image name in the script.
@@ -75,6 +75,8 @@ Unlike classic antivirus integrations, THOR is designed to detect webshells, obf
 This makes THOR an effective complement to existing AV solutions within the Veeam ecosystem.
 
 ## Version History
+- 1.1 (Oct 7 2025
+   - Code review and improvements by Lumo
 - 1.0 (Sep 26 2025)
   - Initial version
     
