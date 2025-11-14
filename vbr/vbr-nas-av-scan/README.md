@@ -31,7 +31,7 @@ Run the password setup script to generate the necessary files. Files must be sto
 ./create-fernet-files.py
 ```
 
-Parameters
+## Parameters
 
 **--vbrserver**
 
@@ -72,7 +72,7 @@ Local base directory for SMB mounts. Default /mnt
 
 Automatically select the latest restore point.
 
-### Usage Examples
+## Usage Examples
 
 Interactive mode (manual restore point selection)
 ```bash
