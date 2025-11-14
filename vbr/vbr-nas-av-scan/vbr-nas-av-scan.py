@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import requests
+import socket
 from cryptography.fernet import Fernet
 from dateutil import parser as dtparser
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -16,7 +17,7 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 API_VERSION = "1.3-rev1"
 CLAMSCAN_PATH = "/usr/bin/clamscan"
 
-# Def Section
+
 def get_password():
    with open("encryption_key.key", "rb") as key_file:
        key = key_file.read()
@@ -279,7 +280,13 @@ def scan_share_with_clamav(mounthost, share_name, mount_base, smb_user, smb_pass
    mountpoint = build_mountpoint(mount_base, mounthost, share_name)
    os.makedirs(mountpoint, exist_ok=True)
 
-   opts = f"username={smb_user},password={smb_pass},ro"
+   try:
+       server_ip = socket.gethostbyname(mounthost)
+   except socket.gaierror as e:
+       print(f"Failed to resolve mount host '{mounthost}': {e}")
+       return
+
+   opts = f"username={smb_user},password={smb_pass},ro,ip={server_ip}"
 
    cmd_mount = ["mount", "-t", "cifs", smb_unc, mountpoint, "-o", opts]
    print(f"Mounting SMB share '{smb_unc}' to '{mountpoint}'...")
