@@ -11,13 +11,14 @@ import socket
 from cryptography.fernet import Fernet
 from dateutil import parser as dtparser
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+from datetime import datetime
 
-# Variables & SSL disable warnings
+# Variables & disable self-signed certificate warning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+timestamp   = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
 API_VERSION = "1.3-rev1"
-CLAMSCAN_PATH = "/usr/bin/clamscan"
 
-
+# Def section
 def get_password():
    with open("encryption_key.key", "rb") as key_file:
        key = key_file.read()
@@ -31,6 +32,17 @@ def get_smb_password():
    with open("encrypted_smb_password.bin", "rb") as password_file:
        encrypted_password = password_file.read()
    return Fernet(key).decrypt(encrypted_password).decode()
+
+def load_scan_engines():
+   if not os.path.exists("scan-engines.json"):
+       return []
+   with open("scan-engines.json", "r") as f:
+       data = json.load(f)
+   engines = []
+   for eng in data.get("engines", []):
+       if os.path.exists(eng["path"]):
+           engines.append(eng)
+   return engines
 
 def connect_veeam_rest_api(api_url, username, password):
    url = f"{api_url}/api/oauth2/token"
@@ -51,9 +63,9 @@ def get_veeam_rest_api(api_url, endpoint, token, params=None):
        "x-api-version": API_VERSION,
        "Authorization": f"Bearer {token}"
    }
-   response = requests.get(url, headers=headers, params=params, verify=False)
-   response.raise_for_status()
-   return response.json()
+   r = requests.get(url, headers=headers, params=params, verify=False)
+   r.raise_for_status()
+   return r.json()
 
 def post_veeam_rest_api(api_url, endpoint, token, body):
    url = f"{api_url}/api/{endpoint}"
@@ -63,10 +75,10 @@ def post_veeam_rest_api(api_url, endpoint, token, body):
        "Content-Type": "application/json",
        "Authorization": f"Bearer {token}"
    }
-   response = requests.post(url, headers=headers, json=body, verify=False)
-   response.raise_for_status()
-   if response.content:
-       return response.json()
+   r = requests.post(url, headers=headers, json=body, verify=False)
+   r.raise_for_status()
+   if r.content:
+       return r.json()
    return {}
 
 def post_logout(api_url, token):
@@ -87,8 +99,7 @@ def get_nas_restore_points(api_url, token, sharename, limit=10):
        "platformNameFilter": "UnstructuredData",
        "nameFilter": f"*{sharename}*"
    }
-   return get_veeam_rest_api(api_url, "v1/restorePoints", token, params=params)
-
+   return get_veeam_rest_api(api_url, "v1/restorePoints", token, params)
 
 def display_nas_restore_points(rp_response):
    data = rp_response.get("data", [])
@@ -99,7 +110,7 @@ def display_nas_restore_points(rp_response):
        creation_iso = rp.get("creationTime")
        try:
            creation_str = dtparser.isoparse(creation_iso).strftime("%Y-%m-%d %H:%M:%S")
-       except Exception:
+       except:
            creation_str = creation_iso or "unknown"
        print("{:<5} {:<50} {:<25}".format(idx, name, creation_str))
 
@@ -112,34 +123,29 @@ def _timeout_handler(signum, frame):
 def select_restore_point(num_items, timeout_seconds=30):
    signal.signal(signal.SIGALRM, _timeout_handler)
    print(f"\nYou have {timeout_seconds} seconds to select a restore point.")
-   print("Default is 0 (latest) if nothing is selected.")
+   print("Default is 0 (latest).")
    signal.alarm(timeout_seconds)
    try:
        choice = input(f"Enter number (0-{num_items - 1}): ")
        signal.alarm(0)
    except TimeoutException:
-       print("Timeout reached → using index 0.")
+       print("Timeout → using index 0.")
        return 0
-
    if not choice.isdigit():
-       print("Invalid input → using index 0.")
+       print("Invalid → index 0.")
        return 0
-
    idx = int(choice)
    if 0 <= idx < num_items:
        return idx
-
-   print("Out of range. Using index 0.")
+   print("Out of range → index 0.")
    return 0
 
 def get_managed_server_id(api_url, token, mounthost):
    params = {"nameFilter": mounthost}
-   resp = get_veeam_rest_api(api_url, "v1/backupInfrastructure/managedServers", token, params=params)
+   resp = get_veeam_rest_api(api_url, "v1/backupInfrastructure/managedServers", token, params)
    data = resp.get("data", [])
    if not data:
-       raise RuntimeError(f"No managed server found for nameFilter='{mounthost}'.")
-   if len(data) > 1:
-       print(f"Warning: multiple managed servers match '{mounthost}', using the first one.")
+       raise RuntimeError(f"No managed server matches '{mounthost}'.")
    return data[0].get("id")
 
 def deep_contains_id(obj, target_id):
@@ -158,43 +164,26 @@ def deep_contains_id(obj, target_id):
 def resolve_mount_server_id(api_url, token, managed_server_id):
    ms_list = get_veeam_rest_api(api_url, "v1/backupInfrastructure/mountServers", token)
    candidates = ms_list.get("data", [])
-   if not candidates:
-       raise RuntimeError("No mount servers returned by API.")
-
    matched = []
    for ms in candidates:
        ms_id = ms.get("id")
-       if not ms_id:
-           continue
        detail = get_veeam_rest_api(api_url, f"v1/backupInfrastructure/mountServers/{ms_id}", token)
        if deep_contains_id(detail, managed_server_id):
-           ms_type = ms.get("type", "")
-           matched.append((ms_id, ms_type))
-
+           matched.append((ms_id, ms.get("type", "")))
    if not matched:
-       raise RuntimeError("No mount server found that references the given managed server id.")
+       raise RuntimeError("No mount server found.")
+   win = [m for m in matched if m[1] == "Windows"]
+   return win[0][0] if win else matched[0][0]
 
-   windows_matches = [m for m in matched if m[1] == "Windows"]
-   if windows_matches:
-       ms_id = windows_matches[0][0]
-       print(f"Using Windows mount server: {ms_id}")
-       return ms_id
-
-   ms_id = matched[0][0]
-   print(f"Using mount server: {ms_id}")
-   return ms_id
-
-def start_instant_file_share_recovery(api_url, token, restore_point_id, mount_server_id, smb_user):
+def start_instant_file_share_recovery(api_url, token, rp_id, mount_server_id, smb_user):
    payload = {
        "autoSelectMountServers": False,
        "restoreOptions": [
            {
-               "restorePointId": restore_point_id,
+               "restorePointId": rp_id,
                "mountServerId": mount_server_id,
                "permissions": {
                    "owner": "Administrator",
-                   #"permissionType": "AllowSelected",
-                   #"permissionScope": [smb_user]
                    "permissionType": "AllowEveryone",
                    "permissionScope": []
                }
@@ -202,13 +191,7 @@ def start_instant_file_share_recovery(api_url, token, restore_point_id, mount_se
        ],
        "reason": "AV Scan"
    }
-   print("Starting Instant File Share Recovery...")
-   return post_veeam_rest_api(
-       api_url,
-       "v1/restore/instantRecovery/unstructuredData",
-       token,
-       body=payload
-   )
+   return post_veeam_rest_api(api_url, "v1/restore/instantRecovery/unstructuredData", token, payload)
 
 def stop_instant_file_share_recovery(api_url, token, session_id):
    url = f"{api_url}/api/v1/restore/instantRecovery/unstructuredData/{session_id}/unmount"
@@ -218,10 +201,7 @@ def stop_instant_file_share_recovery(api_url, token, session_id):
        "Content-Type": "application/json",
        "Authorization": f"Bearer {token}"
    }
-   print("Stopping Instant File Share Recovery...")
-   resp = requests.post(url, headers=headers, json={}, verify=False)
-   if resp.status_code not in (200, 202, 204):
-       print(f"Warning: unmount request returned HTTP {resp.status_code}")
+   requests.post(url, headers=headers, json={}, verify=False)
 
 def try_extract_session_id(ir_response):
    if isinstance(ir_response, dict):
@@ -253,86 +233,45 @@ def extract_production_share_name(ir_response):
                        if isinstance(item, dict) and isinstance(item.get("name"), str):
                            name_value = item["name"]
                            break
-                   if name_value:
-                       break
    if not name_value:
        return None, None
-
-   s = name_value.strip()
-   s = s.lstrip("\\/")
+   s = name_value.strip().lstrip("\\/")
    parts = s.split("\\")
    if len(parts) < 2:
        return None, None
-   host = parts[0]
-   share = parts[1]
-   share = share.rstrip("$")
-   return host, share
+   return parts[0], parts[1].rstrip("$")
 
-def build_mountpoint(mount_base, mounthost, share_name):
-   raw = f"{mounthost}_{share_name}"
-   name = re.sub(r"[^A-Za-z0-9._-]+", "_", raw)
-   if not name:
-       name = "veeam_share"
-   return os.path.join(mount_base, name)
+def build_mountpoint(base, host, share):
+   raw = f"{host}_{share}"
+   name = re.sub(r"[^A-Za-z0-9._-]+", "_", raw) or "veeam_share"
+   return os.path.join(base, name)
 
-def scan_share_with_clamav(mounthost, share_name, mount_base, smb_user, smb_pass):
-   smb_unc = f"//{mounthost}/{share_name}"
-   mountpoint = build_mountpoint(mount_base, mounthost, share_name)
-   os.makedirs(mountpoint, exist_ok=True)
-
-   try:
-       server_ip = socket.gethostbyname(mounthost)
-   except socket.gaierror as e:
-       print(f"Failed to resolve mount host '{mounthost}': {e}")
-       return
-
-   opts = f"username={smb_user},password={smb_pass},ro,ip={server_ip}"
-
-   cmd_mount = ["mount", "-t", "cifs", smb_unc, mountpoint, "-o", opts]
-   print(f"Mounting SMB share '{smb_unc}' to '{mountpoint}'...")
-   try:
-       subprocess.run(cmd_mount, check=True)
-   except subprocess.CalledProcessError as e:
-       print(f"Error mounting share: {e}")
-       return
-
-   try:
-       if not os.path.exists(CLAMSCAN_PATH):
-           print(f"ClamAV binary not found at {CLAMSCAN_PATH}.")
-           return
-
-       print(f"Running ClamAV scan on '{mountpoint}'...")
-       cmd_scan = [CLAMSCAN_PATH, "--no-summary", "-i", "-r", mountpoint]
-       result = subprocess.run(cmd_scan, capture_output=True, text=True)
-       stdout = result.stdout
-       stderr = result.stderr
-
-       if stderr:
-           print("ClamAV stderr:")
-           print(stderr)
-
-       detections = []
-       for line in stdout.splitlines():
-           if re.search(r"FOUND$", line):
-               detections.append(line)
-
-       print("ClamAV output:")
-       print(stdout)
-
-       if detections:
-           print("\nDetections:")
-           for d in detections:
-               print(f"🐞 {d}")
+def run_scan_engine(engine, mountpoint):
+   params = []
+   has_placeholder = False
+   for p in engine.get("params", []):
+       if p == "{path}":
+           params.append(mountpoint)
+           has_placeholder = True
        else:
-           print("\nNo detections found by ClamAV (no lines ending with 'FOUND').")
+           params.append(p)
+   if not has_placeholder:
+       params.append(mountpoint)
 
-   finally:
-       print(f"Unmounting '{mountpoint}'...")
-       subprocess.run(["umount", mountpoint], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-       try:
-           os.rmdir(mountpoint)
-       except OSError:
-           pass
+   cmd = [engine["path"]] + params
+   result = subprocess.run(cmd, capture_output=True, text=True)
+   stdout = result.stdout
+   regex = re.compile(engine["regex"])
+   detections = [line for line in stdout.splitlines() if regex.search(line)]
+
+   print(f"\n=== {engine['name']} scan output ===")
+   print(stdout)
+   if detections:
+       print(f"\n{engine['name']} detections:")
+       for d in detections:
+           print(f"{timestamp} 🐞 {d}")
+   else:
+       print(f"\n{timestamp} No detections from {engine['name']}.")
 
 def main():
    parser = argparse.ArgumentParser(description="NAS Instant File Share Recovery with ClamAV scan from Linux")
@@ -348,79 +287,87 @@ def main():
    parser.add_argument("--noninteractive", action="store_true", help="Do not prompt, always use latest restore point")
    args = parser.parse_args()
 
+   # Load scan engines json file
+   engines = load_scan_engines()
+
    api_url = f"https://{args.vbrserver}:9419"
    username = args.username
-   smb_user = args.smb_user if args.smb_user else username
-
+   smb_user = args.smb_user or username
    password = get_password()
    smb_pass = get_smb_password()
 
-   print("Getting authentication token...")
+   print("Getting Bearer token...")
    token = connect_veeam_rest_api(api_url, username, password)
-   print("Authentication successful.")
 
    session_id = None
 
    try:
-       print(f"Resolving managed server id for mount host '{args.mounthost}'...")
        managed_server_id = get_managed_server_id(api_url, token, args.mounthost)
-
-       print("Resolving mount server for this managed server...")
        mount_server_id = resolve_mount_server_id(api_url, token, managed_server_id)
 
-       print(f"\nQuerying NAS restore points for share '{args.sharename}'...")
-       rp_response = get_nas_restore_points(api_url, token, args.sharename, limit=10)
+       rp_response = get_nas_restore_points(api_url, token, args.sharename, 10)
        data = rp_response.get("data", [])
        if not data:
            print("No restore points found.")
            return
-
        display_nas_restore_points(rp_response)
 
        if args.noninteractive:
            selected_index = 0
-           print("\nNon-interactive mode. Using latest restore point.")
        else:
-           selected_index = select_restore_point(len(data), timeout_seconds=args.timeout)
+           selected_index = select_restore_point(len(data), args.timeout)
 
        selected_rp = data[selected_index]
-
        rp_id = selected_rp.get("id")
-       rp_name = selected_rp.get("name")
-       creation_str = dtparser.isoparse(selected_rp["creationTime"]).strftime("%Y-%m-%d %H:%M:%S")
-
-       print(f"\nSelected restore point -  Name: {rp_name} - Created: {creation_str}")
 
        ir_response = start_instant_file_share_recovery(api_url, token, rp_id, mount_server_id, smb_user)
-
        session_id = try_extract_session_id(ir_response)
-       if session_id:
-           print(f"Detected Instant Recovery session id: {session_id}")
-       else:
-           print("Warning: no session id could be detected in Instant Recovery response.")
 
-       print(f"\nWaiting {args.wait} seconds for share to be presented...")
+       print(f"\nWaiting {args.wait} seconds...")
        time.sleep(args.wait)
 
        prod_host, prod_share = extract_production_share_name(ir_response)
-       if prod_share:
-           effective_share = args.smb_share if args.smb_share else prod_share
-           print(f"Production share from IR response: \\\\{prod_host}\\{prod_share}")
-           print(f"Derived/used IR SMB share on mount host: \\\\{args.mounthost}\\{effective_share}")
-           print(f"Starting ClamAV scan from this Linux host using SMB mount as user '{smb_user}'...")
-           scan_share_with_clamav(args.mounthost, effective_share, args.mount_base, smb_user=smb_user, smb_pass=smb_pass)
-       else:
-           print("\nCould not extract production share name from response, cannot mount from Linux.")
+       if not prod_share:
+           print("Could not extract share.")
+           return
+
+       effective_share = args.smb_share or prod_share
+
+       try:
+           server_ip = socket.gethostbyname(args.mounthost)
+       except:
+           print(f"Cannot resolve {args.mounthost}")
+           return
+
+       mountpoint = build_mountpoint(args.mount_base, args.mounthost, effective_share)
+       os.makedirs(mountpoint, exist_ok=True)
+
+       smb_unc = f"//{args.mounthost}/{effective_share}"
+       opts = f"username={smb_user},password={smb_pass},ro,ip={server_ip}"
+       cmd_mount = ["mount", "-t", "cifs", smb_unc, mountpoint, "-o", opts]
+
+       print(f"Mounting {smb_unc}...")
+       try:
+           subprocess.run(cmd_mount, check=True)
+       except:
+           print("Mount failed.")
+           return
+
+       for eng in engines:
+           run_scan_engine(eng, mountpoint)
+
+   finally:
+       print("\nUnmounting...")
+       subprocess.run(["umount", mountpoint], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+       try:
+           os.rmdir(mountpoint)
+       except:
+           pass
 
        if session_id:
            stop_instant_file_share_recovery(api_url, token, session_id)
-       else:
-           print("Instant Recovery session was not stopped automatically because no session id was found.")
 
-   finally:
-       print("\nLogging out...")
        post_logout(api_url, token)
-
 
 if __name__ == "__main__":
    main()
