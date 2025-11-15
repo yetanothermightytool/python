@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Python script uses the Veeam Backup & Replication REST API to locate NAS restore points, start an Instant File Share Recovery session, mount the recovered SMB share on Linux, scan it with ClamAV, and then automatically unmount and stop the recovery session, supporting both interactive and non-interactive execution modes.
+This Python script uses the Veeam Backup & Replication REST API to locate NAS restore points, start an Instant File Share Recovery session, mount the recovered SMB share on Linux, run one or more malware scanners defined in a scan-engines.json configuration file (currently ClamAV or THOR), and finally unmount the share and stop the recovery session. It supports both interactive and non-interactive execution modes.
 
 ## Prerequisites
 
@@ -14,14 +14,6 @@ Install required Python modules:
 sudo apt install python3 python3-pip python3-dateutil
 pip install cryptography requests
 ```
-### Install ClamAV
-
-```bash
-sudo apt install clamav clamav-daemon
-sudo freshclam
-```
-
-The script expects the ClamAV scanner at /usr/bin/clamscan
 
 ### Encrypted Password Storage (Fernet)
 
@@ -31,7 +23,18 @@ Run the password setup script to generate the necessary files. Files must be sto
 ./create-fernet-files.py
 ```
 
-## Parameters
+## Scan Engines
+The script utilizes the scan configuration specified in the scan-engines.json file. Currently, ClamAV and the Thor Scanner are included.
+
+### Install ClamAV
+
+```bash
+sudo apt install clamav clamav-daemon
+sudo freshclam
+```
+The scan-engines.json expects the ClamAV scanner at /usr/bin/clamscan.
+
+## Script Parameters
 
 **--vbrserver**
 
@@ -93,7 +96,7 @@ If nothing is detected "No detections found by ClamAV (no lines ending with 'FOU
 
 ## Notes
 - Requires Python 3 and modules: requests, cryptography, dateutil
-- Requires ClamAV installed and updated
+- Requires a supported scan engine installed and updated
 - Compatible with Veeam REST API version 1.3-rev1
 - Supports NAS restore points (platformName = UnstructuredData)
 
@@ -101,11 +104,12 @@ If nothing is detected "No detections found by ClamAV (no lines ending with 'FOU
 
 ## Version Information
 ~~~~
-Version: 1.0 (November 14 2025)
+Version: 1.1 (November 15 2025)
 Author: Steve Herzig
 ~~~~
 
 ## Version History
-
+1.1
+ - Using the scan-engines.json file to define which engine(s) to be used.
 1.0
-• Initial release
+ - Initial release
