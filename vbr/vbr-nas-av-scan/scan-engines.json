@@ -1,0 +1,24 @@
+{
+ "engines": [
+   {
+     "name": "clamav",
+     "path": "/usr/bin/clamscan",
+     "params": ["--no-summary", "-i", "-r"],
+     "regex": "FOUND$"
+   },
+   {
+     "name": "thor",
+     "path": "/opt/thor/thor-linux-64",
+     "params": [
+       "-a", "FileScan",
+       "--intense",
+       "--threads", "-2",
+       "--nothordb",
+       "--alldrives",
+       "-e", "/opt/thor/",
+       "-p", "{path}"
+     ],
+     "regex": "ALERTS:\\s*[1-9]\\d*|WARNINGS:\\s*[1-9]\\d*"
+   }
+ ]
+}
