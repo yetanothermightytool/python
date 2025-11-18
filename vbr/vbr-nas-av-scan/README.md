@@ -87,7 +87,7 @@ Non-interactive mode (always use latest restore point)
 sudo ./nas-av-scan.py --vbrserver vbr01.example.com --sharename data --mounthost win-mount01 --noninteractive
 ```
 
-###Output Format
+### Output Format
 
 ClamAV detections appear as "🐞 /mnt/win-ir01_backup/file.exe: Eicar-Test-Signature FOUND"
 
