@@ -1,4 +1,4 @@
-# Veeam NAS Instant Recovery – Linux ClamAV Scan
+# Veeam NAS Instant Recovery – AV Scan
 
 ## Overview
 
