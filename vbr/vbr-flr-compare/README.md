@@ -14,15 +14,15 @@ Save the keyfiles for the REST API user to be used with this [script.](https://g
 
 - `--host` (required) Hostname of the VM used to filter restore points.
 
-- `--vbrserver` Hostname or IP of the Veeam Backup & Replication server. Default: vbr.test.local (can be changed)
+- `--vbrserver` Hostname or IP of the Veeam Backup & Replication server. Default: vbr.test.local (can be changed).
 
 - `--user` (required) Windows username for accessing the production VM.
 
-- `--comparepaths` One or more paths to compare with the production system. Example: --comparepaths "C:\Users" "C:\Downloads"
+- `--comparepaths` One or more paths to compare with the production system. Example: --comparepaths "C:\Users" "C:\Downloads".
 
 - `--output` Write comparison results to a timestamped JSON file.
 
-- `--latest` Uses the latest restore point (auto mode)
+- `--latest` Uses the latest restore point (auto mode).
 
 ### Usage Examples
 
@@ -38,7 +38,7 @@ Compare multiple paths and write results to a file
 
 ### Output Behavior
 After Veeam completes the comparison, the script prints the results in JSON format.
-With --output, a file file is saved with a format like <hostname>_compare_<restore_point_creation_date>.json
+With --output, a file file is saved with a format like <hostname>_compare_<restore_point_creation_date>.json.
 
 ## Notes
 - Tested with Veeam REST API version 1.3-rev1
