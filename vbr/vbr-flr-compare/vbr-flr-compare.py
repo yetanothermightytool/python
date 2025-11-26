@@ -222,6 +222,7 @@ def main():
     parser.add_argument("--user", required=True, help="Credential username for Windows FLR")
     parser.add_argument("--comparepaths", nargs='+', help="One or more paths to compare, e.g. --comparepaths C:\\Users C:\\Downloads")
     parser.add_argument("--output", action="store_true", help="Write comparison result to a JSON file")
+    parser.add_argument("--latest", action="store_true", help="Automatically select the latest restore point")
     args = parser.parse_args()
 
     api_url = f"https://{args.vbrserver}:9419"
@@ -235,13 +236,16 @@ def main():
 
     print(f"📂 Restore points for {args.host}:")
     display_restore_points(rpdata)
-    try:
-        sel_idx = int(input("❓ Number: "))
-    except Exception:
+    if args.latest:
         sel_idx = 0
-    if sel_idx < 0 or sel_idx >= len(rpdata["data"]):
-        print("❌ Invalid input – defaulting to 0.")
-        sel_idx = 0
+    else:
+        try:
+            sel_idx = int(input("❓ Number: "))
+        except Exception:
+            sel_idx = 0
+        if sel_idx < 0 or sel_idx >= len(rpdata["data"]):
+            print("❌ Invalid input – defaulting to 0.")
+            sel_idx = 0
     rp = rpdata["data"][sel_idx]
 
     credentials_id = get_credentials_id(sess, token, args.user, api_url)
