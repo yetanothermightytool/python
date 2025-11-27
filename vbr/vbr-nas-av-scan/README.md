@@ -104,12 +104,14 @@ If nothing is detected "No detections found by ClamAV (no lines ending with 'FOU
 
 ## Version Information
 ~~~~
-Version: 1.1 (November 15 2025)
+Version: 1.2 (November 27 2025)
 Author: Steve Herzig
 ~~~~
 
 ## Version History
-1.1
- - Using the scan-engines.json file to define which engine(s) to be used.
-1.0
- - Initial release
+- 1.2
+  - YARA scan. Rules must reside in the defined directory in scan-engines.json
+- 1.1
+  - Using the scan-engines.json file to define which engine(s) to be used.
+- 1.0
+  - Initial release
