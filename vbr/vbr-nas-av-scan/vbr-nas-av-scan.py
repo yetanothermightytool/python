@@ -219,12 +219,6 @@ def try_extract_session_id(ir_response):
    return None
 
 def extract_production_share_name(ir_response):
-   """
-   Returns (host, share_or_export)
-
-   SMB example:  '\\\\SERVER\\SHARE$'  -> ('SERVER', 'SHARE')
-   NFS example:  'NFSSERVER:/export/path' -> ('NFSSERVER', '/export/path')
-   """
    name_value = None
    if isinstance(ir_response, dict):
        if isinstance(ir_response.get("name"), str):
