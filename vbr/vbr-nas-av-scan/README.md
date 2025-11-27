@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Python script uses the Veeam Backup & Replication REST API to locate NAS restore points, start an Instant File Share Recovery session, mount the recovered SMB share on Linux, run one or more malware scanners defined in a scan-engines.json configuration file (currently ClamAV or THOR), and finally unmount the share and stop the recovery session. It supports both interactive and non-interactive execution modes.
+This Python script uses the Veeam Backup & Replication REST API to locate NAS restore points, start an Instant File Share Recovery session, mount the recovered SMB share or NFS Export on Linux, run one or more malware scanners defined in a scan-engines.json configuration file (currently ClamAV, THOR and YARA), and finally unmount the share and stop the recovery session. It supports both interactive and non-interactive execution modes.
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ Hostname or IP of the Veeam Backup & Replication server. (Required)
 
 **--sharename**
 
-Search pattern for the NAS share name inside restore points. (Required)
+Search pattern for the NAS share/NFS Export name inside restore points. (Required)
 
 **--mounthost**
 
