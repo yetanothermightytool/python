@@ -110,7 +110,7 @@ Author: Steve Herzig
 
 ## Version History
 - 1.2
-  - YARA scan. Rule must reside in the defined directory in scan-engines.json
+  - YARA scan. The path to the YARA rule must be defined in scan-engines.json file.
   - Scanning protected NFS exports. Instant File Share Recovery uses SMB to present the data.
 - 1.1
   - Using the scan-engines.json file to define which engine(s) to be used.
