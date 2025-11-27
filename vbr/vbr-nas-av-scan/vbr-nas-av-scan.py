@@ -110,7 +110,7 @@ def display_nas_restore_points(rp_response):
        creation_iso = rp.get("creationTime")
        try:
            creation_str = dtparser.isoparse(creation_iso).strftime("%Y-%m-%d %H:%M:%S")
-       except:
+       except Exception:
            creation_str = creation_iso or "unknown"
        print("{:<5} {:<50} {:<25}".format(idx, name, creation_str))
 
@@ -219,6 +219,12 @@ def try_extract_session_id(ir_response):
    return None
 
 def extract_production_share_name(ir_response):
+   """
+   Returns (host, share_or_export)
+
+   SMB example:  '\\\\SERVER\\SHARE$'  -> ('SERVER', 'SHARE')
+   NFS example:  'NFSSERVER:/export/path' -> ('NFSSERVER', '/export/path')
+   """
    name_value = None
    if isinstance(ir_response, dict):
        if isinstance(ir_response.get("name"), str):
@@ -235,7 +241,16 @@ def extract_production_share_name(ir_response):
                            break
    if not name_value:
        return None, None
+
    s = name_value.strip().lstrip("\\/")
+
+   # NFS-style: SERVER:/export/path
+   if ":/" in s:
+       server, export = s.split(":/", 1)
+       export = "/" + export.lstrip("/")
+       return server, export
+
+   # SMB-style: \\SERVER\SHARE
    parts = s.split("\\")
    if len(parts) < 2:
        return None, None
@@ -274,7 +289,7 @@ def run_scan_engine(engine, mountpoint):
        print(f"\n{timestamp} No detections from {engine['name']}.")
 
 def main():
-   parser = argparse.ArgumentParser(description="NAS Instant File Share Recovery with ClamAV scan from Linux")
+   parser = argparse.ArgumentParser(description="NAS Instant File Share Recovery with multi-engine scan from Linux")
    parser.add_argument("--vbrserver", required=True, help="VBR server hostname or IP")
    parser.add_argument("--sharename", required=True, help="Share name")
    parser.add_argument("--mounthost", required=True, help="Hostname of the Windows mount host (managed server)")
@@ -300,6 +315,7 @@ def main():
    token = connect_veeam_rest_api(api_url, username, password)
 
    session_id = None
+   mountpoint = None
 
    try:
        managed_server_id = get_managed_server_id(api_url, token, args.mounthost)
@@ -310,6 +326,7 @@ def main():
        if not data:
            print("No restore points found.")
            return
+       print(f"📂 Showing latest 10 restore points for share filter '{args.sharename}'...")
        display_nas_restore_points(rp_response)
 
        if args.noninteractive:
@@ -331,11 +348,12 @@ def main():
            print("Could not extract share.")
            return
 
-       effective_share = args.smb_share or prod_share
+       # For mounting from Windows mount host via SMB, strip leading slashes
+       effective_share = (args.smb_share or prod_share).lstrip("/\\")
 
        try:
            server_ip = socket.gethostbyname(args.mounthost)
-       except:
+       except Exception:
            print(f"Cannot resolve {args.mounthost}")
            return
 
@@ -349,7 +367,7 @@ def main():
        print(f"Mounting {smb_unc}...")
        try:
            subprocess.run(cmd_mount, check=True)
-       except:
+       except Exception:
            print("Mount failed.")
            return
 
@@ -358,11 +376,12 @@ def main():
 
    finally:
        print("\nUnmounting...")
-       subprocess.run(["umount", mountpoint], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-       try:
-           os.rmdir(mountpoint)
-       except:
-           pass
+       if mountpoint:
+           subprocess.run(["umount", mountpoint], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+           try:
+               os.rmdir(mountpoint)
+           except Exception:
+               pass
 
        if session_id:
            stop_instant_file_share_recovery(api_url, token, session_id)
