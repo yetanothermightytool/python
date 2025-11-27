@@ -11,6 +11,12 @@
      "path": "/opt/thor/thor-linux-64",
      "params": ["-a", "FileScan", "--intense", "--threads", "-2", "--nothordb", "--alldrives", "-e", "/opt/thor/", "-p", "{path}"],
      "regex": "^(Warning|Alert).*SCORE:|^FILE:\\s*(.+)"
+   },
+   {
+     "name": "yara",
+     "path": "/usr/bin/yara",
+     "params": ["-p", "8", "-r", "/home/administrator/version-21/yara_rules/yara.yar", "{path}"],
+     "regex": "^\\S+\\s+/.+$"
    }
  ]
 }
