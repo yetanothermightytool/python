@@ -15,7 +15,7 @@
    {
      "name": "yara",
      "path": "/usr/bin/yara",
-     "params": ["-p", "8", "-r", "/home/administrator/version-21/yara_rules/yara.yar", "{path}"],
+     "params": ["-p", "8", "-r", "./yara_rules/yara.yar", "{path}"],
      "regex": "^\\S+\\s+/.+$"
    }
  ]
