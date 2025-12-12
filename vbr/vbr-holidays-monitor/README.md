@@ -1,4 +1,4 @@
-# Veeam VBR Holiday Monitor
+# 🎄 Veeam VBR Happy Holidays Monitor 🎄
 
 This script provides a live, terminal-based visualization of Veeam Backup & Replication job states using the VBR REST API.
 
