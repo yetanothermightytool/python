@@ -1,5 +1,6 @@
 # Environment / credentials
 .env
+*.key
 
 # THOR binaries and license files
 *.lic
