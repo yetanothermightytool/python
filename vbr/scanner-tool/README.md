@@ -54,7 +54,7 @@ docker build -f Dockerfile.pyrsistencesniper -t pyrsistencesniper .
 Make the script executable:
 
 ```bash
-chmod +x thor-scanner.py
+chmod +x scanner-tool.py
 ```
 
 ### Parameters
@@ -69,13 +69,13 @@ chmod +x thor-scanner.py
 
 ```bash
 # Interactive – choose restore point, default scanner (thor-lite)
-./thor-scanner.py --host2scan Server01
+./scanner-tool.py --host2scan Server01
 
 # Automated – latest restore point with full THOR
-./thor-scanner.py --host2scan Server01 --latest --dockerimage thor
+./scanner-tool.py --host2scan Server01 --latest --dockerimage thor
 
 # PyrsistenceSniper scan
-./thor-scanner.py --host2scan Server01 --dockerimage pyrsistencesniper
+./scanner-tool.py --host2scan Server01 --dockerimage pyrsistencesniper
 ```
 
 ## Output
