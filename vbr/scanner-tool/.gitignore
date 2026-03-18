@@ -1,0 +1,20 @@
+# Environment / credentials
+.env
+
+# THOR binaries and license files
+*.lic
+thor-linux-64
+thor-lite-linux-64
+thor-util-linux-64
+
+# Scan output
+/tmp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# macOS
+.DS_Store

@@ -1,0 +1,20 @@
+# Stage 1 – build
+FROM python:3.12-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir poetry
+
+WORKDIR /app
+RUN git clone --depth 1 https://github.com/hexastrike/PyrsistenceSniper.git .
+
+RUN poetry config virtualenvs.in-project true && poetry install --only main --no-interaction
+
+# Stage 2 – runtime
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY --from=builder /app /app
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENTRYPOINT ["pyrsistencesniper"]
