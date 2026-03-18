@@ -9,6 +9,7 @@ import argparse
 import datetime
 import requests
 from dotenv import load_dotenv
+from cryptography.fernet import Fernet
 
 # Disable TLS verification
 import urllib3
@@ -23,8 +24,15 @@ load_dotenv()
 API_URL              = os.getenv("VBR_URL", "")
 API_VERSION          = os.getenv("VBR_API_VERSION", "1.2-rev1")
 USERNAME             = os.getenv("VBR_USERNAME", "")
-PASSWORD             = os.getenv("VBR_PASSWORD", "")
 RESULTS_DIR          = os.getenv("RESULTS_DIR", "/tmp/output")
+
+_enc_password = os.getenv("VBR_PASSWORD", "")
+_key_file     = os.getenv("VBR_KEY_FILE", "")
+if _key_file:
+    with open(_key_file, "rb") as _kf:
+        PASSWORD = Fernet(_kf.read().strip()).decrypt(_enc_password.encode()).decode()
+else:
+    PASSWORD = _enc_password
 
 REQUEST_TIMEOUT      = 10   # seconds for HTTP requests
 PUBLISH_WAIT_SECONDS = 30   # wait after publishing a disk

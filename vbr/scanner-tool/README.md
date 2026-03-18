@@ -16,7 +16,7 @@ Supported scanners:
 
 ## Requirements
 - Linux host with Python 3.x
-- Python modules: `requests`, `python-dotenv`
+- Python modules: `requests`, `python-dotenv`, `cryptography`
 - Veeam Backup & Replication server v12.3.2+
 - Docker installed and the relevant Docker image built on the scan host
 
@@ -28,11 +28,34 @@ Copy `.env.example` to `.env` and fill in your values:
 VBR_URL=https://<vbr-server>:9419
 VBR_API_VERSION=1.2-rev1
 VBR_USERNAME=Administrator
-VBR_PASSWORD=your-password-here
+VBR_PASSWORD=<encrypted-password>
+VBR_KEY_FILE=/root/.vbr.key
 RESULTS_DIR=/tmp/output
 ```
 
 All credentials are read from `.env` at startup. The script exits immediately if `VBR_URL`, `VBR_USERNAME`, or `VBR_PASSWORD` are missing.
+
+### Encrypting the password
+
+The password in `.env` is stored Fernet-encrypted. Use the included helper to generate the key and encrypted password:
+
+```bash
+python3 encrypt-password.py
+```
+
+This will:
+1. Generate a Fernet key and save it to `vbr.key`
+2. Prompt for the VBR password and print the encrypted value
+3. Show the two lines to add to `.env`
+
+Then move the key file to a secure location:
+
+```bash
+sudo mv vbr.key /root/.vbr.key
+sudo chmod 600 /root/.vbr.key
+```
+
+The key file and the `.env` should be stored separately — an attacker needs both to decrypt the password.
 
 ## Build Docker Images
 
@@ -100,6 +123,8 @@ Unlike classic antivirus integrations, THOR detects webshells, obfuscated script
 - 1.2 (Mar 18, 2026)
   - Added PyrsistenceSniper scanner support
   - Replaced hardcoded credentials with `.env`-based configuration
+  - Password stored Fernet-encrypted; key file kept separately
+  - Added `encrypt-password.py` helper for one-time setup
   - Added `--dockerimage` CLI flag for per-run scanner selection
   - Multi-scanner Dockerfile support (`Dockerfile.thor`, `Dockerfile.pyrsistencesniper`)
 - 1.1 (Oct 7, 2025)
