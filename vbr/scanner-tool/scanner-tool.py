@@ -114,6 +114,33 @@ def api_logout(sess: requests.Session, token: str) -> None:
     resp.raise_for_status()
     print("✅ Logout successful.")
 
+def find_windows_root(parent_folder: str, max_depth: int = 3) -> str | None:
+    """Walk up to max_depth levels into parent_folder to find the directory
+    that contains a 'Windows' subdirectory (case-insensitive)."""
+    def _search(path: str, depth: int) -> str | None:
+        if depth == 0:
+            return None
+        try:
+            entries = list(os.scandir(path))
+        except PermissionError:
+            return None
+        for entry in entries:
+            if entry.is_dir() and entry.name.lower() == "windows":
+                return path
+        for entry in entries:
+            if entry.is_dir():
+                result = _search(entry.path, depth - 1)
+                if result:
+                    return result
+        return None
+
+    found = _search(parent_folder, max_depth)
+    if found:
+        print(f"🪟 Windows root found: {found}")
+    else:
+        print("⚠️  Windows directory not found – falling back to full mount point")
+    return found
+
 def find_parent_folder(publish_info: dict) -> str:
     if not isinstance(publish_info, dict):
         raise FileNotFoundError("Invalid publish info")
@@ -155,13 +182,16 @@ def trigger_scan(parent_folder: str, host_to_scan: str, docker_image: str) -> No
     elif docker_image == "pyrsistencesniper":
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         html_file = f"/output/{host_to_scan}_pyrsistencesniper_{ts}.html"
+        windows_root = find_windows_root(parent_folder)
+        rel = os.path.relpath(windows_root, parent_folder) if windows_root else "."
+        evidence_path = f"/evidence/{rel}" if rel != "." else "/evidence"
         cmd = [
             "docker", "run", "--rm",
             "--hostname", hostname,
             "-v", f"{parent_folder}:/evidence:ro",
             "-v", f"{RESULTS_DIR}:/output",
             docker_image,
-            "/evidence",
+            evidence_path,
             "--format", "html",
             "--output", html_file,
             "--min-severity", "info"

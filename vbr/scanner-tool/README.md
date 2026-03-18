@@ -112,6 +112,7 @@ Scan results are written to the directory configured as `RESULTS_DIR` in `.env` 
 
 ## Notes
 - Tested on Ubuntu 24.04
+- For PyrsistenceSniper, the script automatically searches up to 3 directory levels within the mount point for the Windows root directory before starting the scan. If not found, it falls back to the full mount point.
 - TLS verification is disabled for the Veeam API connection (self-signed certificates are common in backup environments)
 - Each scan runs inside an isolated Docker container — multiple jobs can run in parallel without interfering with each other or the host system
 
