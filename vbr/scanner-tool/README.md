@@ -1,85 +1,112 @@
-# Veeam Restore Point Scanner with THOR
+# Veeam Restore Point Scanner
 
 ## Version Information
 ~~~~
-Version: 1.1 (October 7, 2025)
-Requires: Veeam Backup & Replication v12.3.2 & Linux & Python 3.1+
+Version: 1.2 (March 18, 2026)
+Requires: Veeam Backup & Replication v12.3.2 & Linux & Python 3.x
 Author: Stephan "Steve" Herzig
 ~~~~
-## Script
-This script publishes a restore point using the **Veeam Data Integration API**, and runs a [THOR](https://www.nextron-systems.com/thor/) (or THOR Lite) scan against the mounted restore point.
+
+## Overview
+This script publishes a restore point using the **Veeam Data Integration API**, mounts it on the scan host, runs the chosen security scanner inside a Docker container, then unpublishes the restore point.
+
+Supported scanners:
+- **THOR / THOR Lite** (Nextron Systems) — APT/malware detection
+- **PyrsistenceSniper** — Windows persistence mechanism detection
 
 ## Requirements
-- Linux host with Python 3.x 
-- Python modules: `cryptography`, `requests`
-- Veeam Backup & Replication server
-- Docker installed and Docker image created on the scan host
+- Linux host with Python 3.x
+- Python modules: `requests`, `python-dotenv`
+- Veeam Backup & Replication server v12.3.2+
+- Docker installed and the relevant Docker image built on the scan host
 
-### Credentials
-Save the keyfiles for the REST API user to be used with this [script.](https://github.com/yetanothermightytool/python/tree/main/misc/fernet). The username Administrator is stored as the default user in the Python script.
+## Configuration
 
-### Important
-Username & Veeam Backup & Replication Server
- Set the Veeam Backup & Replication hostname/IP address and username to query the REST API'.
- ```python
-USERNAME        = "Administrator"
-API_URL         = "https://vbr-host:9419"
+Copy `.env.example` to `.env` and fill in your values:
+
+```ini
+VBR_URL=https://<vbr-server>:9419
+VBR_API_VERSION=1.2-rev1
+VBR_USERNAME=Administrator
+VBR_PASSWORD=your-password-here
+RESULTS_DIR=/tmp/output
 ```
 
-The script can run **with THOR or THOR Lite**. Set the correct container image name in the script.
- ```python
- docker_image = "thor-lite"   # or "thor"
-```
+All credentials are read from `.env` at startup. The script exits immediately if `VBR_URL`, `VBR_USERNAME`, or `VBR_PASSWORD` are missing.
 
-### Build the Docker image before running the script
-The Dockerfile and the Python script must be placed in the same folder as your THOR files (binaries, licenssignatures, etc.
-Build the THOR (or THOR Lite) Docker image before running the script. Sample for thor-lite (Adjust the path in the Dockerfile if necessary).
+## Build Docker Images
+
+The Dockerfile(s) and scanner binaries/licenses must reside in the same folder.
+
 ```bash
-docker build -t thor-lite .
+# THOR Lite (default binary name)
+docker build -f Dockerfile.thor -t thor-lite .
+
+# Full THOR (different binary name)
+docker build -f Dockerfile.thor --build-arg THOR_BIN=thor-linux-64 -t thor .
+
+# PyrsistenceSniper
+docker build -f Dockerfile.pyrsistencesniper -t pyrsistencesniper .
 ```
 
-## Script Usage
-Make the script executable and run it directly.
+## Usage
 
-chmod +x script.py
-./thor-scanner.py -host2scan <HOSTNAME> [--latest]
+Make the script executable:
 
-Parameters
-- `--host2scan <HOSTNAME>`
-The hostname for which the latest backup (restore points) should be scanned.
+```bash
+chmod +x thor-scanner.py
+```
 
-- `--latest`
-Optional flag. If set, the script automatically uses the newest restore point without showing a menu or waiting for user input.
-Useful for automation (e.g. cron jobs).
+### Parameters
 
-Examples
+| Parameter | Required | Description |
+|---|---|---|
+| `--host2scan <HOSTNAME>` | Yes | Hostname whose restore points should be scanned |
+| `--latest` | No | Skip the selection menu and use the newest restore point (suitable for cron) |
+| `--dockerimage <IMAGE>` | No | Scanner to use: `thor`, `thor-lite` (default), or `pyrsistencesniper` |
 
-Interactive mode (choose restore point manually):
-'''bash
-./thor-scanner.py -host2scan Server01
-'''
+### Examples
 
-Automated mode (always the latest restore point):
-'''bash
-./thor-scanner.py -host2scan Server01 --latest
-'''
+```bash
+# Interactive – choose restore point, default scanner (thor-lite)
+./thor-scanner.py --host2scan Server01
+
+# Automated – latest restore point with full THOR
+./thor-scanner.py --host2scan Server01 --latest --dockerimage thor
+
+# PyrsistenceSniper scan
+./thor-scanner.py --host2scan Server01 --dockerimage pyrsistencesniper
+```
+
+## Output
+
+Scan results are written to the directory configured as `RESULTS_DIR` in `.env` (default: `/tmp/output`).
+
+| Scanner | Output file pattern |
+|---|---|
+| `thor` / `thor-lite` | `<hostname>_thor_<timestamp>.html` |
+| `pyrsistencesniper` | `<hostname>_pyrsistencesniper_<timestamp>.html` |
 
 ## Notes
-- Scan results are written to /tmp/output.
 - Tested on Ubuntu 24.04
-- Why Docker! Because I want! ## The scan runs inside a container for better control and isolation. This way multiple jobs can run in parallel without interfering with each other or the host system.
+- TLS verification is disabled for the Veeam API connection (self-signed certificates are common in backup environments)
+- Each scan runs inside an isolated Docker container — multiple jobs can run in parallel without interfering with each other or the host system
 
-## Who is Nextron and what is THOR?
-Nextron Systems specializes in forensic threat detection. Their product, THOR, is widely used by incident response and security teams to uncover attacker tools and traces that traditional solutions may miss. 
-Unlike classic antivirus integrations, THOR is designed to detect webshells, obfuscated scripts, malicious configurations, and backdoors, the kinds of artefacts that advanced attackers often leave behind. In addition, THOR parses system artefacts such as Windows Registry hives or Event Logs with dedicated modules, applying forensic rules that go far beyond a simple file-level scan. 
-This makes THOR an effective complement to existing AV solutions within the Veeam ecosystem.
+## What is THOR?
+Nextron Systems specializes in forensic threat detection. THOR is widely used by incident response and security teams to uncover attacker tools and traces that traditional solutions may miss.
+Unlike classic antivirus integrations, THOR detects webshells, obfuscated scripts, malicious configurations, and backdoors — the kinds of artefacts that advanced attackers often leave behind. It also parses system artefacts such as Windows Registry hives and Event Logs with dedicated forensic modules, making it an effective complement to existing AV solutions within the Veeam ecosystem.
 
 ## Version History
-- 1.1 (Oct 7 2025
-   - Code review and improvements by Lumo
-- 1.0 (Sep 26 2025)
+- 1.2 (Mar 18, 2026)
+  - Added PyrsistenceSniper scanner support
+  - Replaced hardcoded credentials with `.env`-based configuration
+  - Added `--dockerimage` CLI flag for per-run scanner selection
+  - Multi-scanner Dockerfile support (`Dockerfile.thor`, `Dockerfile.pyrsistencesniper`)
+- 1.1 (Oct 7, 2025)
+  - Code review and improvements by Lumo
+- 1.0 (Sep 26, 2025)
   - Initial version
-    
+
 ## Disclaimer
 
 This script is not officially supported by Veeam Software. Use it at your own risk.
