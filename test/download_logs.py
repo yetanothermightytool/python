@@ -57,22 +57,35 @@ def get_token() -> str:
     return token
 
 
+def _raise(resp):
+    try:
+        detail = resp.json()
+    except Exception:
+        detail = resp.text
+    print(f"[-] HTTP {resp.status_code} {resp.request.method} {resp.url}")
+    print(f"    Response: {json.dumps(detail, indent=2) if isinstance(detail, dict) else detail}")
+    resp.raise_for_status()
+
+
 def api_get(path: str, params: dict = None) -> dict:
     resp = session.get(f"{API}{path}", params=params)
-    resp.raise_for_status()
+    if not resp.ok:
+        _raise(resp)
     return resp.json()
 
 
 def api_post(path: str, body: dict = None) -> dict:
     resp = session.post(f"{API}{path}", json=body or {})
-    resp.raise_for_status()
+    if not resp.ok:
+        _raise(resp)
     return resp.json()
 
 
 def api_post_binary(path: str, body: dict = None):
     """POST that returns a binary stream."""
     resp = session.post(f"{API}{path}", json=body or {}, stream=True)
-    resp.raise_for_status()
+    if not resp.ok:
+        _raise(resp)
     return resp
 
 
