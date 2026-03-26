@@ -75,7 +75,10 @@ def smb_connect():
     if not host or not user:
         print("[-] SMB_HOST and SMB_USER must be set in config.env.")
         sys.exit(1)
-    smbclient.register_session(host, username=user, password=passwd, domain=domain or None)
+    kwargs = {"username": user, "password": passwd}
+    if domain:
+        kwargs["domain"] = domain
+    smbclient.register_session(host, **kwargs)
     print(f"[+] SMB session registered: {host}")
 
 
