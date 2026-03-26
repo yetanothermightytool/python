@@ -2,15 +2,13 @@
 """
 Veeam EntraID Audit Log Downloader
 Workflow (based on swagger.json):
-  1.  POST /api/oauth2/token                                          → Bearer token
-  2.  GET  /api/v1/backups                                            → backup list
-  3.  GET  /api/v1/restorePoints?backupIdFilter=<id>                  → restore points
-  4.  POST /api/v1/restore/entraId/auditLog                           → mount → sessionId
-  5.  POST /api/v1/backupBrowser/flr/{sessionId}/browse  path="/"    → file list
-  6.  POST /api/v1/backupBrowser/flr/{sessionId}/prepareDownload      → taskId
-  7.  GET  /api/v1/backupBrowser/flr/{sessionId}/prepareDownload/{taskId}  (poll)
-  8.  POST /api/v1/backupBrowser/flr/{sessionId}/prepareDownload/{taskId}/download → binary
-  9.  POST /api/v1/restore/entraId/auditLog/{sessionId}/unmount       → cleanup
+  1.  POST /api/oauth2/token                                                    → Bearer token
+  2.  GET  /api/v1/backups                                                       → backup list
+  3.  POST /api/v1/restore/entraId/auditLog                                      → mount → sessionId
+  4.  POST /api/v1/backupBrowser/flr/unstructuredData/{sessionId}/browse         → file list
+  5.  POST /api/v1/backupBrowser/flr/unstructuredData/{sessionId}/copyTo         → copy to local path (taskId)
+  6.  Poll task until complete
+  7.  POST /api/v1/restore/unstructuredData/{sessionId}/unmount                  → cleanup
 """
 
 import sys
@@ -28,16 +26,18 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ---------------------------------------------------------------------------
 cfg = dotenv_values("config.env")
 
-BASE_URL   = cfg.get("VEEAM_HOST", "").rstrip("/")
-VEEAM_USER = cfg.get("VEEAM_USER", "")
-VEEAM_PASS = cfg.get("VEEAM_PASS", "")
-SSL_VERIFY = cfg.get("VEEAM_SSL_VERIFY", "false").lower() == "true"
-API        = f"{BASE_URL}/api/v1"
-OUTPUT_DIR = Path("logs")
-OUTPUT_DIR.mkdir(exist_ok=True)
+BASE_URL    = cfg.get("VEEAM_HOST", "").rstrip("/")
+VEEAM_USER  = cfg.get("VEEAM_USER", "")
+VEEAM_PASS  = cfg.get("VEEAM_PASS", "")
+SSL_VERIFY  = cfg.get("VEEAM_SSL_VERIFY", "false").lower() == "true"
+# Absolute path on the Veeam server where logs will be copied to
+LOCAL_PATH  = cfg.get("VEEAM_OUTPUT_PATH", "/home/administrator/entraid/logs")
+API         = f"{BASE_URL}/api/v1"
 
-session = requests.Session()
-session.verify = SSL_VERIFY
+Path(LOCAL_PATH).mkdir(parents=True, exist_ok=True)
+
+http = requests.Session()
+http.verify = SSL_VERIFY
 
 
 # ---------------------------------------------------------------------------
@@ -45,14 +45,14 @@ session.verify = SSL_VERIFY
 # ---------------------------------------------------------------------------
 def get_token() -> str:
     print("[*] Authenticating ...")
-    resp = session.post(
+    resp = http.post(
         f"{BASE_URL}/api/oauth2/token",
         data={"grant_type": "password", "username": VEEAM_USER, "password": VEEAM_PASS},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     resp.raise_for_status()
     token = resp.json()["access_token"]
-    session.headers.update({"Authorization": f"Bearer {token}"})
+    http.headers.update({"Authorization": f"Bearer {token}"})
     print("[+] Token obtained.")
     return token
 
@@ -68,36 +68,27 @@ def _raise(resp):
 
 
 def api_get(path: str, params: dict = None) -> dict:
-    resp = session.get(f"{API}{path}", params=params)
+    resp = http.get(f"{API}{path}", params=params)
     if not resp.ok:
         _raise(resp)
     return resp.json()
 
 
 def api_post(path: str, body: dict = None) -> dict:
-    resp = session.post(f"{API}{path}", json=body or {})
+    resp = http.post(f"{API}{path}", json=body or {})
     if not resp.ok:
         _raise(resp)
     return resp.json()
 
 
-def api_post_binary(path: str, body: dict = None):
-    """POST that returns a binary stream."""
-    resp = session.post(f"{API}{path}", json=body or {}, stream=True)
-    if not resp.ok:
-        _raise(resp)
-    return resp
-
-
 def extract_list(data) -> list:
-    """Handle both paginated {data: [...]} and plain list responses."""
     if isinstance(data, dict):
         return data.get("data", [])
     return data if isinstance(data, list) else []
 
 
 # ---------------------------------------------------------------------------
-# Step 2 & 3: Discovery
+# Step 2: Discovery
 # ---------------------------------------------------------------------------
 def list_backups() -> list:
     print("[*] Fetching backups ...")
@@ -108,17 +99,8 @@ def list_backups() -> list:
     return backups
 
 
-def list_restore_points(backup_id: str) -> list:
-    print(f"[*] Fetching restore points for backup {backup_id} ...")
-    points = extract_list(api_get("/restorePoints", params={"backupIdFilter": backup_id}))
-    print(f"    Found {len(points)} restore point(s).")
-    for p in points:
-        print(f"      id={p['id']}  created={p.get('creationTime', '?')}")
-    return points
-
-
 # ---------------------------------------------------------------------------
-# Step 4: Mount
+# Step 3: Mount
 # ---------------------------------------------------------------------------
 def start_mount(backup_id: str) -> str:
     """Returns sessionId. Uses backupId (all-time mode) as required by the API."""
@@ -140,14 +122,16 @@ def start_mount(backup_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Browse
+# Step 4: Browse (unstructuredData browser)
 # ---------------------------------------------------------------------------
-def browse(session_id: str, path: str = "/") -> list:
-    """Returns list of FlrBrowserItemModel."""
+def browse(session_id: str, path: str) -> list:
     print(f"[*] Browsing path '{path}' ...")
-    result = api_post(f"/backupBrowser/flr/{session_id}/browse", {"path": path})
+    result = api_post(
+        f"/backupBrowser/flr/unstructuredData/{session_id}/browse",
+        {"path": path},
+    )
     items = result.get("items", [])
-    print(f"    Found {len(items)} item(s) at '{path}':")
+    print(f"    Found {len(items)} item(s):")
     for item in items:
         itype = item.get("type", "?")
         name  = item.get("name", "?")
@@ -157,80 +141,72 @@ def browse(session_id: str, path: str = "/") -> list:
     return items
 
 
-def collect_files(session_id: str, path: str = "/") -> list:
-    """Recursively collect all file paths."""
+def collect_files(session_id: str, path: str, sep: str = "|") -> list:
+    """Recursively collect all file locations."""
     items = browse(session_id, path)
     files = []
     for item in items:
-        if item.get("type", "").lower() == "file":
-            files.append(item.get("location") or item.get("name"))
-        elif item.get("type", "").lower() in ("directory", "folder"):
-            loc = item.get("location") or path.rstrip("/") + "/" + item.get("name", "")
-            files.extend(collect_files(session_id, loc))
+        itype = item.get("type", "").lower()
+        loc   = item.get("location", "")
+        name  = item.get("name", "")
+        if itype == "file":
+            files.append(loc or name)
+        elif itype in ("directory", "folder"):
+            child_path = loc or (path.rstrip(sep) + sep + name if path != sep else sep + name)
+            files.extend(collect_files(session_id, child_path, sep))
     return files
 
 
 # ---------------------------------------------------------------------------
-# Steps 6-8: Prepare & download
+# Step 5: Copy to local path on Veeam server
 # ---------------------------------------------------------------------------
-def poll_task(session_id: str, task_id: str, interval: int = 3, timeout: int = 300) -> dict:
+def copy_to_local(session_id: str, source_paths: list) -> str:
+    """Triggers copyTo on the Veeam server. Returns task id."""
+    print(f"[*] Copying {len(source_paths)} item(s) to '{LOCAL_PATH}' on Veeam server ...")
+    body = {
+        "sourcePath": source_paths,
+        "isRecursive": True,
+        "copyToBackupServer": True,
+        "path": LOCAL_PATH,
+    }
+    task = api_post(f"/backupBrowser/flr/unstructuredData/{session_id}/copyTo", body)
+    task_id = task.get("id")
+    if not task_id:
+        print(f"[-] No task id in copyTo response: {task}")
+        sys.exit(1)
+    print(f"[+] CopyTo task started: {task_id}")
+    return task_id
+
+
+# ---------------------------------------------------------------------------
+# Step 6: Poll task
+# ---------------------------------------------------------------------------
+def poll_task(task_id: str, interval: int = 5, timeout: int = 600) -> dict:
     print(f"[*] Polling task {task_id} ...")
     deadline = time.time() + timeout
     while time.time() < deadline:
-        task = api_get(f"/backupBrowser/flr/{session_id}/prepareDownload/{task_id}")
-        state  = task.get("state", "?")
-        pct    = task.get("progressPercent", 0)
-        result = task.get("result", "?")
+        task = api_get(f"/tasks/{task_id}")
+        state = task.get("state", "?")
+        pct   = task.get("progressPercent", 0)
         print(f"    state={state}  progress={pct}%")
         if state.lower() in ("succeeded", "success", "completed"):
+            print("[+] Task completed.")
             return task
         if state.lower() in ("failed", "error"):
-            print(f"[-] Task failed: {task}")
+            print(f"[-] Task failed: {json.dumps(task, indent=2)}")
             sys.exit(1)
         time.sleep(interval)
     print("[-] Timeout waiting for task.")
     sys.exit(1)
 
 
-def prepare_and_download(session_id: str, file_paths: list):
-    print(f"[*] Preparing download for {len(file_paths)} file(s) ...")
-    task = api_post(
-        f"/backupBrowser/flr/{session_id}/prepareDownload",
-        {"sourcePath": file_paths},
-    )
-    task_id = task.get("id")
-    if not task_id:
-        print(f"[-] No task id returned: {task}")
-        sys.exit(1)
-
-    poll_task(session_id, task_id)
-
-    print("[*] Downloading ...")
-    resp = api_post_binary(
-        f"/backupBrowser/flr/{session_id}/prepareDownload/{task_id}/download"
-    )
-
-    # Determine filename from Content-Disposition or fallback
-    cd = resp.headers.get("Content-Disposition", "")
-    filename = "auditlogs.zip"
-    if "filename=" in cd:
-        filename = cd.split("filename=")[-1].strip().strip('"')
-
-    dest = OUTPUT_DIR / filename
-    with open(dest, "wb") as fh:
-        for chunk in resp.iter_content(chunk_size=65536):
-            fh.write(chunk)
-    print(f"[+] Saved: {dest} ({dest.stat().st_size} bytes)")
-    return dest
-
-
 # ---------------------------------------------------------------------------
-# Step 9: Unmount
+# Step 7: Unmount
 # ---------------------------------------------------------------------------
 def unmount(session_id: str):
     print(f"[*] Unmounting session {session_id} ...")
     try:
-        api_post(f"/restore/entraId/auditLog/{session_id}/unmount")
+        api_post(f"/restore/unstructuredData/{session_id}/unmount")
         print("[+] Unmounted.")
     except Exception as e:
         print(f"[!] Unmount failed (non-fatal): {e}")
@@ -246,32 +222,52 @@ def main():
 
     get_token()
 
-    # Discovery
     backups = list_backups()
     if not backups:
         print("[-] No backups found.")
         sys.exit(1)
 
     backup_id = backups[0]["id"]
-
-    # Mount (all-time mode: backupId only, no restorePointId)
     session_id = start_mount(backup_id)
 
     try:
-        # Browse & collect files
-        files = collect_files(session_id, "/")
-        if not files:
-            print("[!] No files found in mount. Dumping raw browse result for inspection:")
-            browse(session_id, "/")
-        else:
-            print(f"\n[*] Total files to download: {len(files)}")
-            for f in files:
-                print(f"      {f}")
-            prepare_and_download(session_id, files)
+        # Browse root — path separator is "|" per mount response
+        items = browse(session_id, "|")
+        if not items:
+            print("[!] Root browse returned no items. Trying '/' ...")
+            items = browse(session_id, "/")
+
+        if not items:
+            print("[!] No items found at root.")
+            sys.exit(1)
+
+        # Collect all file paths recursively, starting from root dirs/files
+        all_files = []
+        sep = "|"
+        for item in items:
+            itype = item.get("type", "").lower()
+            loc   = item.get("location", "")
+            name  = item.get("name", "")
+            if itype == "file":
+                all_files.append(loc or name)
+            elif itype in ("directory", "folder"):
+                all_files.extend(collect_files(session_id, loc or name, sep))
+
+        if not all_files:
+            print("[!] No files found to copy.")
+            sys.exit(1)
+
+        print(f"\n[*] Files to copy ({len(all_files)}):")
+        for f in all_files:
+            print(f"      {f}")
+
+        task_id = copy_to_local(session_id, all_files)
+        poll_task(task_id)
+
     finally:
         unmount(session_id)
 
-    print("\n[+] Done. Log files saved to:", OUTPUT_DIR.resolve())
+    print(f"\n[+] Done. Log files are at: {LOCAL_PATH}")
 
 
 if __name__ == "__main__":
