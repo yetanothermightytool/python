@@ -252,7 +252,7 @@ def poll_task(task_id: str, interval: int = 5, timeout: int = 1800):
         state = task.get("state", "?")
         pct   = task.get("progressPercent", 0)
         print(f"    state={state}  progress={pct}%")
-        if state.lower() in ("succeeded", "success", "completed"):
+        if state.lower() in ("succeeded", "success", "completed", "stopped"):
             print("[+] Task completed successfully.")
             return task
         if state.lower() in ("failed", "error"):
