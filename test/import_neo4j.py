@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
 """
-EntraID Audit Log → Neo4j Importer
+EntraID Audit Log + Sign-in Log → Neo4j Importer
 
-Reads "Audit Logs" .log files from a Windows SMB share and imports
-them into Neo4j running on Linux.
+Reads "Audit Logs" and "Sign-in Logs" .log files from a Windows SMB share
+and imports them into Neo4j running on Linux.
 
 Graph model:
   Nodes:
-    (:AuditEvent)       — one per log entry
-    (:User)             — deduped by Microsoft ID
+    (:AuditEvent)       — one per audit log entry
+    (:SignInEvent)      — one per sign-in log entry
+    (:User)             — deduped by Microsoft ID (shared across both)
     (:Application)      — deduped by AppId
     (:ServicePrincipal) — deduped by Microsoft ID
-    (:IPAddress)        — deduped by address
+    (:IPAddress)        — deduped by address (shared across both)
 
   Relationships:
     (:User)-[:INITIATED]->(:AuditEvent)
     (:Application)-[:INITIATED]->(:AuditEvent)
-    (:AuditEvent)-[:TARGETED {modifiedProperties}]->(:User|:ServicePrincipal|:Other)
+    (:AuditEvent)-[:TARGETED {modifiedProperties}]->(:User|:ServicePrincipal|:TargetResource)
+    (:User)-[:INITIATED]->(:SignInEvent)
+    (:SignInEvent)-[:ACCESSED]->(:Application)
     (:User)-[:USED_IP]->(:IPAddress)
 
 Usage:
@@ -27,7 +30,6 @@ Usage:
 import argparse
 import json
 import sys
-from pathlib import Path
 
 import smbclient
 import smbclient.path
@@ -51,11 +53,12 @@ def get_driver(uri: str, user: str, password: str):
 # Schema / indexes
 # ---------------------------------------------------------------------------
 INDEXES = [
-    "CREATE CONSTRAINT audit_event_id IF NOT EXISTS FOR (e:AuditEvent) REQUIRE e.id IS UNIQUE",
-    "CREATE CONSTRAINT user_id IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE",
-    "CREATE CONSTRAINT app_id IF NOT EXISTS FOR (a:Application) REQUIRE a.appId IS UNIQUE",
-    "CREATE CONSTRAINT sp_id IF NOT EXISTS FOR (s:ServicePrincipal) REQUIRE s.id IS UNIQUE",
-    "CREATE CONSTRAINT ip_addr IF NOT EXISTS FOR (i:IPAddress) REQUIRE i.address IS UNIQUE",
+    "CREATE CONSTRAINT audit_event_id   IF NOT EXISTS FOR (e:AuditEvent)       REQUIRE e.id      IS UNIQUE",
+    "CREATE CONSTRAINT signin_event_id  IF NOT EXISTS FOR (e:SignInEvent)       REQUIRE e.id      IS UNIQUE",
+    "CREATE CONSTRAINT user_id          IF NOT EXISTS FOR (u:User)              REQUIRE u.id      IS UNIQUE",
+    "CREATE CONSTRAINT app_id           IF NOT EXISTS FOR (a:Application)       REQUIRE a.appId   IS UNIQUE",
+    "CREATE CONSTRAINT sp_id            IF NOT EXISTS FOR (s:ServicePrincipal)  REQUIRE s.id      IS UNIQUE",
+    "CREATE CONSTRAINT ip_addr          IF NOT EXISTS FOR (i:IPAddress)         REQUIRE i.address IS UNIQUE",
 ]
 
 def create_indexes(session):
@@ -94,8 +97,9 @@ def smb_root() -> str:
 
 # ---------------------------------------------------------------------------
 # Log file discovery (over SMB)
+# Returns list of (smb_path, log_type) where log_type is "audit" or "signin"
 # ---------------------------------------------------------------------------
-def find_log_files() -> list[str]:
+def find_log_files() -> list[tuple[str, str]]:
     root = smb_root()
     files = []
     print(f"[*] Scanning SMB share: {root}")
@@ -109,27 +113,30 @@ def find_log_files() -> list[str]:
         month_path = root + "\\" + month_name
         if not smbclient.path.isdir(month_path):
             continue
-        # Find "Audit Logs" subfolder (case-insensitive)
         try:
             children = smbclient.listdir(month_path)
         except Exception:
             continue
-        audit_dir = None
         for child in children:
-            if "audit" in child.lower():
-                audit_dir = month_path + "\\" + child
-                break
-        if not audit_dir:
-            continue
-        try:
-            log_names = sorted(smbclient.listdir(audit_dir))
-        except Exception:
-            continue
-        for name in log_names:
-            if name.lower().endswith(".log"):
-                files.append(audit_dir + "\\" + name)
+            child_lower = child.lower()
+            if "audit" in child_lower:
+                log_type = "audit"
+            elif "sign" in child_lower:
+                log_type = "signin"
+            else:
+                continue
+            child_path = month_path + "\\" + child
+            try:
+                log_names = sorted(smbclient.listdir(child_path))
+            except Exception:
+                continue
+            for name in log_names:
+                if name.lower().endswith(".log"):
+                    files.append((child_path + "\\" + name, log_type))
 
-    print(f"[+] Found {len(files)} log file(s).")
+    audit_count  = sum(1 for _, t in files if t == "audit")
+    signin_count = sum(1 for _, t in files if t == "signin")
+    print(f"[+] Found {len(files)} log file(s): {audit_count} audit, {signin_count} sign-in.")
     return files
 
 
@@ -151,9 +158,26 @@ def parse_log_file(smb_path: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Cypher queries
+# Shared Cypher helpers
 # ---------------------------------------------------------------------------
-MERGE_EVENT = """
+MERGE_IP = """
+MERGE (ip:IPAddress {address: $address})
+WITH ip
+MATCH (u:User {id: $userId})
+MERGE (u)-[:USED_IP]->(ip)
+"""
+
+MERGE_USER = """
+MERGE (u:User {id: $userId})
+SET u.userPrincipalName = COALESCE($upn, u.userPrincipalName),
+    u.displayName       = COALESCE($displayName, u.displayName)
+"""
+
+
+# ---------------------------------------------------------------------------
+# Audit log Cypher
+# ---------------------------------------------------------------------------
+MERGE_AUDIT_EVENT = """
 MERGE (e:AuditEvent {id: $id})
 SET e.activityDateTime    = $activityDateTime,
     e.activityDisplayName = $activityDisplayName,
@@ -165,29 +189,22 @@ SET e.activityDateTime    = $activityDateTime,
     e.correlationId       = $correlationId
 """
 
-MERGE_USER_INITIATED = """
+MERGE_USER_INITIATED_AUDIT = """
 MERGE (u:User {id: $userId})
-SET u.userPrincipalName = $upn,
+SET u.userPrincipalName = COALESCE($upn, u.userPrincipalName),
     u.displayName       = COALESCE($displayName, u.displayName)
 WITH u
 MATCH (e:AuditEvent {id: $eventId})
 MERGE (u)-[:INITIATED]->(e)
 """
 
-MERGE_APP_INITIATED = """
+MERGE_APP_INITIATED_AUDIT = """
 MERGE (a:Application {appId: $appId})
 SET a.displayName        = COALESCE($displayName, a.displayName),
     a.servicePrincipalId = COALESCE($spId, a.servicePrincipalId)
 WITH a
 MATCH (e:AuditEvent {id: $eventId})
 MERGE (a)-[:INITIATED]->(e)
-"""
-
-MERGE_IP = """
-MERGE (ip:IPAddress {address: $address})
-WITH ip
-MATCH (u:User {id: $userId})
-MERGE (u)-[:USED_IP]->(ip)
 """
 
 MERGE_TARGET_USER = """
@@ -210,20 +227,17 @@ SET r.modifiedProperties = $modifiedProperties
 """
 
 MERGE_TARGET_OTHER = """
-MATCH (e:AuditEvent {id: $eventId})
 MERGE (t:TargetResource {id: $targetId})
 SET t.displayName = COALESCE($displayName, t.displayName),
     t.type        = $type
+WITH t
+MATCH (e:AuditEvent {id: $eventId})
 MERGE (e)-[r:TARGETED]->(t)
 SET r.modifiedProperties = $modifiedProperties
 """
 
 
-# ---------------------------------------------------------------------------
-# Import logic
-# ---------------------------------------------------------------------------
 def modified_props_str(props: list) -> str:
-    """Compact summary of ModifiedProperties for relationship property."""
     if not props:
         return ""
     parts = []
@@ -235,13 +249,12 @@ def modified_props_str(props: list) -> str:
     return " | ".join(parts)
 
 
-def import_event(tx, event: dict):
+def import_audit_event(tx, event: dict):
     eid = event.get("Id", "")
     if not eid:
         return
 
-    # --- AuditEvent node ---
-    tx.run(MERGE_EVENT, {
+    tx.run(MERGE_AUDIT_EVENT, {
         "id":                   eid,
         "activityDateTime":     event.get("ActivityDateTime", ""),
         "activityDisplayName":  event.get("ActivityDisplayName", ""),
@@ -253,41 +266,37 @@ def import_event(tx, event: dict):
         "correlationId":        event.get("CorrelationId", ""),
     })
 
-    # --- Initiator ---
     initiated_by = event.get("InitiatedBy") or {}
     user_actor   = initiated_by.get("User")
     app_actor    = initiated_by.get("App")
 
     if user_actor and user_actor.get("Id"):
-        tx.run(MERGE_USER_INITIATED, {
-            "userId":  user_actor["Id"],
-            "upn":     user_actor.get("UserPrincipalName", ""),
+        tx.run(MERGE_USER_INITIATED_AUDIT, {
+            "userId":      user_actor["Id"],
+            "upn":         user_actor.get("UserPrincipalName", ""),
             "displayName": user_actor.get("DisplayName"),
-            "eventId": eid,
+            "eventId":     eid,
         })
         ip = user_actor.get("IpAddress", "")
         if ip:
             tx.run(MERGE_IP, {"address": ip, "userId": user_actor["Id"]})
 
     if app_actor and app_actor.get("AppId"):
-        tx.run(MERGE_APP_INITIATED, {
+        tx.run(MERGE_APP_INITIATED_AUDIT, {
             "appId":       app_actor["AppId"],
             "displayName": app_actor.get("DisplayName"),
             "spId":        app_actor.get("ServicePrincipalId"),
             "eventId":     eid,
         })
 
-    # --- Target resources ---
     for target in (event.get("TargetResources") or []):
-        tid   = target.get("Id") or ""
-        ttype = target.get("Type") or "Other"
+        tid      = target.get("Id") or ""
+        ttype    = target.get("Type") or "Other"
         tdisplay = target.get("DisplayName")
-        tupn  = target.get("UserPrincipalName")
-        mprops = modified_props_str(target.get("ModifiedProperties") or [])
-
+        tupn     = target.get("UserPrincipalName")
+        mprops   = modified_props_str(target.get("ModifiedProperties") or [])
         if not tid:
             continue
-
         if ttype == "User":
             tx.run(MERGE_TARGET_USER, {
                 "targetId": tid, "upn": tupn,
@@ -307,46 +316,151 @@ def import_event(tx, event: dict):
             })
 
 
-def import_events(driver, events: list, batch_size: int = 200):
-    total = 0
-    skipped = 0
+# ---------------------------------------------------------------------------
+# Sign-in log Cypher
+# ---------------------------------------------------------------------------
+MERGE_SIGNIN_EVENT = """
+MERGE (e:SignInEvent {id: $id})
+SET e.createdDateTime         = $createdDateTime,
+    e.appDisplayName          = $appDisplayName,
+    e.clientAppUsed           = $clientAppUsed,
+    e.isInteractive           = $isInteractive,
+    e.correlationId           = $correlationId,
+    e.conditionalAccessStatus = $conditionalAccessStatus,
+    e.riskLevelAggregated     = $riskLevelAggregated,
+    e.riskLevelDuringSignIn   = $riskLevelDuringSignIn,
+    e.riskState               = $riskState,
+    e.errorCode               = $errorCode,
+    e.failureReason           = $failureReason,
+    e.ipAddress               = $ipAddress,
+    e.city                    = $city,
+    e.country                 = $country,
+    e.browser                 = $browser,
+    e.operatingSystem         = $operatingSystem,
+    e.resourceDisplayName     = $resourceDisplayName
+"""
+
+MERGE_USER_INITIATED_SIGNIN = """
+MERGE (u:User {id: $userId})
+SET u.userPrincipalName = COALESCE($upn, u.userPrincipalName),
+    u.displayName       = COALESCE($displayName, u.displayName)
+WITH u
+MATCH (e:SignInEvent {id: $eventId})
+MERGE (u)-[:INITIATED]->(e)
+"""
+
+MERGE_APP_ACCESSED = """
+MERGE (a:Application {appId: $appId})
+SET a.displayName = COALESCE($displayName, a.displayName)
+WITH a
+MATCH (e:SignInEvent {id: $eventId})
+MERGE (e)-[:ACCESSED]->(a)
+"""
+
+
+def import_signin_event(tx, event: dict):
+    eid = event.get("Id", "")
+    if not eid:
+        return
+
+    status    = event.get("Status") or {}
+    device    = event.get("DeviceDetail") or {}
+    location  = event.get("Location") or {}
+
+    tx.run(MERGE_SIGNIN_EVENT, {
+        "id":                     eid,
+        "createdDateTime":        event.get("CreatedDateTime", ""),
+        "appDisplayName":         event.get("AppDisplayName", ""),
+        "clientAppUsed":          event.get("ClientAppUsed", ""),
+        "isInteractive":          event.get("IsInteractive", False),
+        "correlationId":          event.get("CorrelationId", ""),
+        "conditionalAccessStatus": event.get("ConditionalAccessStatus", -1),
+        "riskLevelAggregated":    event.get("RiskLevelAggregated", 0),
+        "riskLevelDuringSignIn":  event.get("RiskLevelDuringSignIn", 0),
+        "riskState":              event.get("RiskState", 0),
+        "errorCode":              status.get("ErrorCode", 0),
+        "failureReason":          status.get("FailureReason", ""),
+        "ipAddress":              event.get("IpAddress", ""),
+        "city":                   location.get("City", ""),
+        "country":                location.get("CountryOrRegion", ""),
+        "browser":                device.get("Browser", ""),
+        "operatingSystem":        device.get("OperatingSystem", ""),
+        "resourceDisplayName":    event.get("ResourceDisplayName", ""),
+    })
+
+    user_id  = event.get("UserId", "")
+    user_upn = event.get("UserPrincipalName", "")
+    user_dn  = event.get("UserDisplayName", "")
+    if user_id:
+        tx.run(MERGE_USER_INITIATED_SIGNIN, {
+            "userId":      user_id,
+            "upn":         user_upn,
+            "displayName": user_dn,
+            "eventId":     eid,
+        })
+        ip = event.get("IpAddress", "")
+        if ip:
+            tx.run(MERGE_IP, {"address": ip, "userId": user_id})
+
+    app_id = event.get("AppId", "")
+    if app_id:
+        tx.run(MERGE_APP_ACCESSED, {
+            "appId":       app_id,
+            "displayName": event.get("AppDisplayName", ""),
+            "eventId":     eid,
+        })
+
+
+# ---------------------------------------------------------------------------
+# Batch import
+# ---------------------------------------------------------------------------
+def import_all(driver, audit_events: list, signin_events: list, batch_size: int = 200):
+    total_audit = total_signin = skipped = 0
+
+    def run_batch(session, batch, fn):
+        nonlocal skipped
+        with session.begin_transaction() as tx:
+            for e in batch:
+                try:
+                    fn(tx, e)
+                except Exception as ex:
+                    print(f"[!] Skipped {e.get('Id','?')}: {ex}")
+                    skipped += 1
+
     with driver.session() as session:
         batch = []
-        for event in events:
-            batch.append(event)
+        for e in audit_events:
+            batch.append(e)
             if len(batch) >= batch_size:
-                with session.begin_transaction() as tx:
-                    for e in batch:
-                        try:
-                            import_event(tx, e)
-                            total += 1
-                        except Exception as ex:
-                            print(f"[!] Skipped event {e.get('Id','?')}: {ex}")
-                            skipped += 1
+                run_batch(session, batch, import_audit_event)
+                total_audit += len(batch)
                 batch = []
         if batch:
-            with session.begin_transaction() as tx:
-                for e in batch:
-                    try:
-                        import_event(tx, e)
-                        total += 1
-                    except Exception as ex:
-                        print(f"[!] Skipped event {e.get('Id','?')}: {ex}")
-                        skipped += 1
-    return total, skipped
+            run_batch(session, batch, import_audit_event)
+            total_audit += len(batch)
+
+        batch = []
+        for e in signin_events:
+            batch.append(e)
+            if len(batch) >= batch_size:
+                run_batch(session, batch, import_signin_event)
+                total_signin += len(batch)
+                batch = []
+        if batch:
+            run_batch(session, batch, import_signin_event)
+            total_signin += len(batch)
+
+    return total_audit, total_signin, skipped
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser(description="Import EntraID Audit Logs into Neo4j")
-    parser.add_argument("--neo4j-uri",  default=cfg.get("NEO4J_URI", "bolt://localhost:7687"),
-                        help="Neo4j bolt URI.")
-    parser.add_argument("--neo4j-user", default=cfg.get("NEO4J_USER", "neo4j"),
-                        help="Neo4j username.")
-    parser.add_argument("--neo4j-pass", default=cfg.get("NEO4J_PASS", ""),
-                        help="Neo4j password.")
+    parser = argparse.ArgumentParser(description="Import EntraID Audit + Sign-in Logs into Neo4j")
+    parser.add_argument("--neo4j-uri",  default=cfg.get("NEO4J_URI",  "bolt://localhost:7687"))
+    parser.add_argument("--neo4j-user", default=cfg.get("NEO4J_USER", "neo4j"))
+    parser.add_argument("--neo4j-pass", default=cfg.get("NEO4J_PASS", ""))
     args = parser.parse_args()
 
     smb_connect()
@@ -360,50 +474,62 @@ def main():
         print("[-] No log files found.")
         sys.exit(1)
 
-    all_events = []
-    empty_files = 0
-    for f in log_files:
-        events = parse_log_file(f)
+    audit_events  = []
+    signin_events = []
+    empty_files   = 0
+
+    for smb_path, log_type in log_files:
+        events = parse_log_file(smb_path)
+        fname  = smb_path.split("\\")[-1]
         if events:
-            all_events.extend(events)
-            print(f"    {f.split(chr(92))[-1]}: {len(events)} event(s)")
+            if log_type == "audit":
+                audit_events.extend(events)
+            else:
+                signin_events.extend(events)
+            print(f"    [{log_type:6}] {fname}: {len(events)} event(s)")
         else:
             empty_files += 1
 
-    print(f"\n[+] Total events to import: {len(all_events)}  (skipped {empty_files} empty files)")
+    print(f"\n[+] Audit events:  {len(audit_events)}")
+    print(f"[+] Sign-in events:{len(signin_events)}")
+    print(f"[+] Empty files:   {empty_files}")
 
-    if not all_events:
+    if not audit_events and not signin_events:
         print("[-] Nothing to import.")
         sys.exit(0)
 
-    total, skipped = import_events(driver, all_events)
+    total_audit, total_signin, skipped = import_all(driver, audit_events, signin_events)
     driver.close()
 
-    print(f"\n[+] Import complete: {total} events imported, {skipped} skipped.")
+    print(f"\n[+] Import complete:")
+    print(f"    Audit events imported:   {total_audit}")
+    print(f"    Sign-in events imported: {total_signin}")
+    print(f"    Skipped:                 {skipped}")
     print("""
-Useful Cypher queries to get started:
+Useful Cypher queries:
 
-  // All activities by a user
-  MATCH (u:User)-[:INITIATED]->(e:AuditEvent)
-  RETURN u.userPrincipalName, e.activityDisplayName, e.activityDateTime
-  ORDER BY e.activityDateTime DESC LIMIT 50
+  // Failed sign-ins per user
+  MATCH (u:User)-[:INITIATED]->(e:SignInEvent)
+  WHERE e.errorCode <> 0
+  RETURN u.userPrincipalName, count(e) AS failures ORDER BY failures DESC
 
-  // Which users were targeted most
-  MATCH (e:AuditEvent)-[:TARGETED]->(u:User)
-  RETURN u.userPrincipalName, count(e) AS changes ORDER BY changes DESC
+  // Sign-ins by country
+  MATCH (e:SignInEvent)
+  RETURN e.country, count(e) AS total ORDER BY total DESC
 
-  // IPs used per user
+  // High-risk sign-ins
+  MATCH (u:User)-[:INITIATED]->(e:SignInEvent)
+  WHERE e.riskLevelAggregated >= 4
+  RETURN u.userPrincipalName, e.ipAddress, e.city, e.country, e.createdDateTime
+
+  // Same IP used for both audit actions and sign-ins
   MATCH (u:User)-[:USED_IP]->(ip:IPAddress)
   RETURN u.userPrincipalName, collect(ip.address) AS ips
 
-  // Correlated events (same CorrelationId)
-  MATCH (e:AuditEvent) WHERE e.correlationId = '<id>'
-  RETURN e ORDER BY e.activityDateTime
-
-  // All property changes on a specific user
-  MATCH (e:AuditEvent)-[r:TARGETED]->(u:User {userPrincipalName: 'user@domain.com'})
-  WHERE r.modifiedProperties <> ''
-  RETURN e.activityDateTime, e.activityDisplayName, r.modifiedProperties
+  // Users who were changed (audit) and also had failed sign-ins
+  MATCH (e1:AuditEvent)-[:TARGETED]->(u:User)<-[:INITIATED]-(u2:User)-[:INITIATED]->(e2:SignInEvent)
+  WHERE e2.errorCode <> 0
+  RETURN u.userPrincipalName AS target, u2.userPrincipalName AS actor, count(e2) AS failedSignIns
 """)
 
 
