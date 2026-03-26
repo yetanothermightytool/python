@@ -120,11 +120,11 @@ def list_restore_points(backup_id: str) -> list:
 # ---------------------------------------------------------------------------
 # Step 4: Mount
 # ---------------------------------------------------------------------------
-def start_mount(restore_point_id: str) -> str:
-    """Returns sessionId."""
-    print(f"[*] Mounting EntraID audit log (restorePointId={restore_point_id}) ...")
+def start_mount(backup_id: str) -> str:
+    """Returns sessionId. Uses backupId (all-time mode) as required by the API."""
+    print(f"[*] Mounting EntraID audit log (backupId={backup_id}) ...")
     body = {
-        "restorePointId": restore_point_id,
+        "backupId": backup_id,
         "autoUnmount": {
             "isEnabled": True,
             "noActivityPeriodInMinutes": 30,
@@ -254,15 +254,8 @@ def main():
 
     backup_id = backups[0]["id"]
 
-    points = list_restore_points(backup_id)
-    if not points:
-        print("[-] No restore points found.")
-        sys.exit(1)
-
-    restore_point_id = points[-1]["id"]  # most recent
-
-    # Mount
-    session_id = start_mount(restore_point_id)
+    # Mount (all-time mode: backupId only, no restorePointId)
+    session_id = start_mount(backup_id)
 
     try:
         # Browse & collect files
