@@ -13,14 +13,23 @@ Graph model:
     (:Application)      — deduped by AppId
     (:ServicePrincipal) — deduped by Microsoft ID
     (:IPAddress)        — deduped by address (shared across both)
+    (:Location)         — deduped by city+country
+    (:Correlation)      — deduped by correlationId (groups related events)
+    (:ErrorCode)        — deduped by errorCode (sign-in failures)
 
   Relationships:
     (:User)-[:INITIATED]->(:AuditEvent)
     (:Application)-[:INITIATED]->(:AuditEvent)
     (:AuditEvent)-[:TARGETED {modifiedProperties}]->(:User|:ServicePrincipal|:TargetResource)
+    (:User)-[:CHANGED_BY]->(:User)           — actor changed target user (from AuditEvent)
+    (:AuditEvent)-[:PART_OF]->(:Correlation)
     (:User)-[:INITIATED]->(:SignInEvent)
     (:SignInEvent)-[:ACCESSED]->(:Application)
+    (:SignInEvent)-[:FROM_LOCATION]->(:Location)
+    (:SignInEvent)-[:PART_OF]->(:Correlation)
+    (:SignInEvent)-[:FAILED_WITH]->(:ErrorCode)
     (:User)-[:USED_IP]->(:IPAddress)
+    (:IPAddress)-[:LOCATED_IN]->(:Location)
 
 Usage:
   python3 import_neo4j.py
@@ -53,12 +62,15 @@ def get_driver(uri: str, user: str, password: str):
 # Schema / indexes
 # ---------------------------------------------------------------------------
 INDEXES = [
-    "CREATE CONSTRAINT audit_event_id   IF NOT EXISTS FOR (e:AuditEvent)       REQUIRE e.id      IS UNIQUE",
-    "CREATE CONSTRAINT signin_event_id  IF NOT EXISTS FOR (e:SignInEvent)       REQUIRE e.id      IS UNIQUE",
-    "CREATE CONSTRAINT user_id          IF NOT EXISTS FOR (u:User)              REQUIRE u.id      IS UNIQUE",
-    "CREATE CONSTRAINT app_id           IF NOT EXISTS FOR (a:Application)       REQUIRE a.appId   IS UNIQUE",
-    "CREATE CONSTRAINT sp_id            IF NOT EXISTS FOR (s:ServicePrincipal)  REQUIRE s.id      IS UNIQUE",
-    "CREATE CONSTRAINT ip_addr          IF NOT EXISTS FOR (i:IPAddress)         REQUIRE i.address IS UNIQUE",
+    "CREATE CONSTRAINT audit_event_id   IF NOT EXISTS FOR (e:AuditEvent)       REQUIRE e.id             IS UNIQUE",
+    "CREATE CONSTRAINT signin_event_id  IF NOT EXISTS FOR (e:SignInEvent)       REQUIRE e.id             IS UNIQUE",
+    "CREATE CONSTRAINT user_id          IF NOT EXISTS FOR (u:User)              REQUIRE u.id             IS UNIQUE",
+    "CREATE CONSTRAINT app_id           IF NOT EXISTS FOR (a:Application)       REQUIRE a.appId          IS UNIQUE",
+    "CREATE CONSTRAINT sp_id            IF NOT EXISTS FOR (s:ServicePrincipal)  REQUIRE s.id             IS UNIQUE",
+    "CREATE CONSTRAINT ip_addr          IF NOT EXISTS FOR (i:IPAddress)         REQUIRE i.address        IS UNIQUE",
+    "CREATE CONSTRAINT location_id      IF NOT EXISTS FOR (l:Location)          REQUIRE l.id             IS UNIQUE",
+    "CREATE CONSTRAINT correlation_id   IF NOT EXISTS FOR (c:Correlation)       REQUIRE c.correlationId  IS UNIQUE",
+    "CREATE CONSTRAINT errorcode_id     IF NOT EXISTS FOR (ec:ErrorCode)        REQUIRE ec.code          IS UNIQUE",
 ]
 
 def create_indexes(session):
@@ -167,10 +179,20 @@ MATCH (u:User {id: $userId})
 MERGE (u)-[:USED_IP]->(ip)
 """
 
-MERGE_USER = """
-MERGE (u:User {id: $userId})
-SET u.userPrincipalName = COALESCE($upn, u.userPrincipalName),
-    u.displayName       = COALESCE($displayName, u.displayName)
+MERGE_IP_LOCATION = """
+MERGE (l:Location {id: $locationId})
+SET l.city    = $city,
+    l.country = $country
+WITH l
+MERGE (ip:IPAddress {address: $address})
+MERGE (ip)-[:LOCATED_IN]->(l)
+"""
+
+MERGE_CORRELATION = """
+MERGE (c:Correlation {correlationId: $correlationId})
+WITH c
+MATCH (e {id: $eventId})
+MERGE (e)-[:PART_OF]->(c)
 """
 
 
@@ -236,6 +258,14 @@ MERGE (e)-[r:TARGETED]->(t)
 SET r.modifiedProperties = $modifiedProperties
 """
 
+MERGE_CHANGED_BY = """
+MATCH (actor:User {id: $actorId})
+MATCH (target:User {id: $targetId})
+MERGE (target)-[r:CHANGED_BY]->(actor)
+SET r.lastSeen          = $dateTime,
+    r.operationCount    = COALESCE(r.operationCount, 0) + 1
+"""
+
 
 def modified_props_str(props: list) -> str:
     if not props:
@@ -289,6 +319,8 @@ def import_audit_event(tx, event: dict):
             "eventId":     eid,
         })
 
+    actor_user_id = (initiated_by.get("User") or {}).get("Id")
+
     for target in (event.get("TargetResources") or []):
         tid      = target.get("Id") or ""
         ttype    = target.get("Type") or "Other"
@@ -303,6 +335,12 @@ def import_audit_event(tx, event: dict):
                 "displayName": tdisplay, "eventId": eid,
                 "modifiedProperties": mprops,
             })
+            if actor_user_id and actor_user_id != tid:
+                tx.run(MERGE_CHANGED_BY, {
+                    "actorId":  actor_user_id,
+                    "targetId": tid,
+                    "dateTime": event.get("ActivityDateTime", ""),
+                })
         elif ttype == "ServicePrincipal":
             tx.run(MERGE_TARGET_SP, {
                 "targetId": tid, "displayName": tdisplay,
@@ -314,6 +352,11 @@ def import_audit_event(tx, event: dict):
                 "type": ttype, "eventId": eid,
                 "modifiedProperties": mprops,
             })
+
+    # Correlation
+    corr = event.get("CorrelationId", "")
+    if corr:
+        tx.run(MERGE_CORRELATION, {"correlationId": corr, "eventId": eid})
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +398,23 @@ SET a.displayName = COALESCE($displayName, a.displayName)
 WITH a
 MATCH (e:SignInEvent {id: $eventId})
 MERGE (e)-[:ACCESSED]->(a)
+"""
+
+MERGE_SIGNIN_LOCATION = """
+MERGE (l:Location {id: $locationId})
+SET l.city    = $city,
+    l.country = $country
+WITH l
+MATCH (e:SignInEvent {id: $eventId})
+MERGE (e)-[:FROM_LOCATION]->(l)
+"""
+
+MERGE_ERRORCODE = """
+MERGE (ec:ErrorCode {code: $code})
+SET ec.description = COALESCE($description, ec.description)
+WITH ec
+MATCH (e:SignInEvent {id: $eventId})
+MERGE (e)-[:FAILED_WITH]->(ec)
 """
 
 
@@ -409,6 +469,40 @@ def import_signin_event(tx, event: dict):
             "displayName": event.get("AppDisplayName", ""),
             "eventId":     eid,
         })
+
+    # Location
+    city    = location.get("City", "")
+    country = location.get("CountryOrRegion", "")
+    if city or country:
+        location_id = f"{country}:{city}".lower()
+        tx.run(MERGE_SIGNIN_LOCATION, {
+            "locationId": location_id,
+            "city":       city,
+            "country":    country,
+            "eventId":    eid,
+        })
+        ip = event.get("IpAddress", "")
+        if ip:
+            tx.run(MERGE_IP_LOCATION, {
+                "locationId": location_id,
+                "city":       city,
+                "country":    country,
+                "address":    ip,
+            })
+
+    # ErrorCode (only on failure)
+    error_code = status.get("ErrorCode", 0)
+    if error_code and error_code != 0:
+        tx.run(MERGE_ERRORCODE, {
+            "code":        error_code,
+            "description": status.get("FailureReason", ""),
+            "eventId":     eid,
+        })
+
+    # Correlation
+    corr = event.get("CorrelationId", "")
+    if corr:
+        tx.run(MERGE_CORRELATION, {"correlationId": corr, "eventId": eid})
 
 
 # ---------------------------------------------------------------------------
@@ -508,28 +602,38 @@ def main():
     print("""
 Useful Cypher queries:
 
+  // Who changed whom most often
+  MATCH (target:User)-[r:CHANGED_BY]->(actor:User)
+  RETURN actor.userPrincipalName, target.userPrincipalName, r.operationCount
+  ORDER BY r.operationCount DESC
+
   // Failed sign-ins per user
-  MATCH (u:User)-[:INITIATED]->(e:SignInEvent)
-  WHERE e.errorCode <> 0
-  RETURN u.userPrincipalName, count(e) AS failures ORDER BY failures DESC
+  MATCH (u:User)-[:INITIATED]->(e:SignInEvent)-[:FAILED_WITH]->(ec:ErrorCode)
+  RETURN u.userPrincipalName, ec.code, ec.description, count(e) AS failures
+  ORDER BY failures DESC
 
   // Sign-ins by country
-  MATCH (e:SignInEvent)
-  RETURN e.country, count(e) AS total ORDER BY total DESC
+  MATCH (e:SignInEvent)-[:FROM_LOCATION]->(l:Location)
+  RETURN l.country, l.city, count(e) AS total ORDER BY total DESC
 
-  // High-risk sign-ins
-  MATCH (u:User)-[:INITIATED]->(e:SignInEvent)
+  // High-risk sign-ins with location
+  MATCH (u:User)-[:INITIATED]->(e:SignInEvent)-[:FROM_LOCATION]->(l:Location)
   WHERE e.riskLevelAggregated >= 4
-  RETURN u.userPrincipalName, e.ipAddress, e.city, e.country, e.createdDateTime
+  RETURN u.userPrincipalName, e.ipAddress, l.city, l.country, e.createdDateTime
 
-  // Same IP used for both audit actions and sign-ins
-  MATCH (u:User)-[:USED_IP]->(ip:IPAddress)
-  RETURN u.userPrincipalName, collect(ip.address) AS ips
+  // All events in the same correlation group (audit + sign-in together)
+  MATCH (e)-[:PART_OF]->(c:Correlation {correlationId: '<id>'})
+  RETURN labels(e), e ORDER BY e.createdDateTime
 
-  // Users who were changed (audit) and also had failed sign-ins
-  MATCH (e1:AuditEvent)-[:TARGETED]->(u:User)<-[:INITIATED]-(u2:User)-[:INITIATED]->(e2:SignInEvent)
-  WHERE e2.errorCode <> 0
-  RETURN u.userPrincipalName AS target, u2.userPrincipalName AS actor, count(e2) AS failedSignIns
+  // IPs and their locations
+  MATCH (ip:IPAddress)-[:LOCATED_IN]->(l:Location)
+  RETURN ip.address, l.city, l.country
+
+  // User changed AND had failed sign-in (potential account takeover)
+  MATCH (target:User)-[:CHANGED_BY]->(actor:User)
+  MATCH (target)-[:INITIATED]->(s:SignInEvent)-[:FAILED_WITH]->(ec:ErrorCode)
+  RETURN target.userPrincipalName, actor.userPrincipalName, ec.code, count(s) AS failedSignIns
+  ORDER BY failedSignIns DESC
 """)
 
 
