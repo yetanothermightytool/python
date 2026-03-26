@@ -224,8 +224,7 @@ def flr_copy_to(session_id: str, source_paths: list, dest_server_id: str,
         "sourcePath": source_paths,
         "isRecursive": recursive,
         "restoreMode": "LatestPoint",
-        "unstructuredDataServerId": dest_server_id,
-        "copyToBackupServer": False,
+        "copyToBackupServer": True,
         "path": dest_path,
     }
     print(f"[*] CopyTo: {len(source_paths)} item(s) → {dest_path}  recursive={recursive}")
