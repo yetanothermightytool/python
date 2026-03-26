@@ -216,7 +216,7 @@ def flr_browse(session_id: str, path: str = "", item_types: list = None) -> list
 
 
 # ---------------------------------------------------------------------------
-# Step 6: CopyTo
+# Step 6: CopyTo + poll until done
 # ---------------------------------------------------------------------------
 def flr_copy_to(session_id: str, source_paths: list, dest_server_id: str,
                 dest_path: str, recursive: bool = True):
@@ -230,9 +230,37 @@ def flr_copy_to(session_id: str, source_paths: list, dest_server_id: str,
     }
     print(f"[*] CopyTo: {len(source_paths)} item(s) → {dest_path}  recursive={recursive}")
     result = api_post(f"/backupBrowser/flr/unstructuredData/{session_id}/copyTo", body)
-    print("[+] CopyTo result:")
+    print("[+] CopyTo task started:")
     pprint.pprint(result)
+
+    task_id = result.get("id")
+    if not task_id:
+        print("[!] No task id returned — cannot poll. Waiting 60s as fallback ...")
+        time.sleep(60)
+        return result
+
+    poll_task(task_id)
     return result
+
+
+def poll_task(task_id: str, interval: int = 5, timeout: int = 1800):
+    """Poll /api/v1/tasks/{taskId} until succeeded or failed."""
+    print(f"[*] Polling task {task_id} ...")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        task = api_get(f"/tasks/{task_id}")
+        state = task.get("state", "?")
+        pct   = task.get("progressPercent", 0)
+        print(f"    state={state}  progress={pct}%")
+        if state.lower() in ("succeeded", "success", "completed"):
+            print("[+] Task completed successfully.")
+            return task
+        if state.lower() in ("failed", "error"):
+            print(f"[-] Task failed: {json.dumps(task, indent=2)}")
+            sys.exit(1)
+        time.sleep(interval)
+    print("[-] Timeout waiting for task to complete.")
+    sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -358,8 +386,8 @@ def main():
     parser = argparse.ArgumentParser(description="Veeam EntraID Audit Log FLR")
     parser.add_argument("--auto", action="store_true",
                         help="Automatic: copy current month folder recursively.")
-    parser.add_argument("--dest-path", default="/tmp/entraid-logs",
-                        help="Destination path on the unstructured data server.")
+    parser.add_argument("--dest-path", default="\\\\server\\share",
+                        help="Destination path on the unstructured data server (e.g. \\\\\\\\server\\\\share or /mnt/path).")
     parser.add_argument("--recursive", action="store_true",
                         help="Manual mode: copy recursively.")
     parser.add_argument("--sleep", type=int, default=12,
