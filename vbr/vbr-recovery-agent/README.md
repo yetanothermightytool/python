@@ -1,4 +1,4 @@
-# Veeam Recovery Agent
+# Recovery Agent
 
 New Relic APM alert → Veeam Instant VM Recovery bridge.
 
@@ -317,18 +317,8 @@ SELECT * FROM VeeamRecovery WHERE status = 'NoCleanRestorePoints' SINCE 7 days a
 
 ---
 
-## Project structure
-
-```
-veeam-recovery-agent/
-├── app/
-│   ├── main.py          # FastAPI app, routes
-│   ├── veeam_client.py  # Veeam B&R REST API client, scoring logic
-│   ├── nr_client.py     # New Relic Event API client
-│   ├── models.py        # Pydantic models (incl. ConfidenceBreakdown)
-│   └── config.py        # Settings (env vars)
-├── nr-workflow-template.json
-├── Dockerfile
+## Version History
+- 1.0 Initial version
 ├── docker-compose.yml
 ├── requirements.txt
 └── .env.example
