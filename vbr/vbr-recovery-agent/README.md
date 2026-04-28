@@ -44,9 +44,9 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-VEEAM_URL=https://veeam.corp.local:9419
-VEEAM_USERNAME=svc-recovery
-VEEAM_PASSWORD=changeme
+VEEAM_URL=https://vbr-server:9419
+VEEAM_USERNAME=<username>
+VEEAM_PASSWORD=<changeme>
 
 NR_ACCOUNT_ID=your-account-id
 NR_LICENSE_KEY=your-ingest-license-key
@@ -55,7 +55,6 @@ NR_LICENSE_KEY=your-ingest-license-key
 ### 2. Start the container
 
 ```bash
-docker network create monitoring   # only once
 docker-compose up -d
 ```
 
