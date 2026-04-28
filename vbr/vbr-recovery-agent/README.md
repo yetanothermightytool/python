@@ -1,10 +1,10 @@
 # Recovery Agent
 
-New Relic APM alert → Veeam Instant VM Recovery bridge.
+New Relic APM alert Veeam Instant VM Recovery Agent.
 
-Receives a New Relic webhook, scores available restore points for the affected VM
+Receives a New Relic webhook call, scores available restore points for the affected VM
 using a confidence algorithm, and waits for operator confirmation before triggering
-an Instant VM Recovery via the Veeam B&R REST API (v1.3-rev1).
+an Instant VM Recovery via the Veeam B&R REST API
 
 ---
 
@@ -286,23 +286,14 @@ All events include `eventType: "VeeamRecovery"`, `status`, and `timestamp`.
 
 `RecoveryRejected` includes `confidenceTotal` and `confidenceBelowThreshold` so rejections can be correlated with score quality.
 
-### Example queries
+### Example queries in New Relic Data Explorer
 
 ```sql
 -- All recovery events
 SELECT * FROM VeeamRecovery SINCE 7 days ago
 
--- Recovery count by status
-SELECT count(*) FROM VeeamRecovery FACET status SINCE 30 days ago TIMESERIES
-
--- Average confidence score of approved recoveries
-SELECT average(confidenceTotal) FROM VeeamRecovery WHERE status = 'RecoveryStarted' SINCE 30 days ago
-
 -- Recoveries approved despite low confidence
 SELECT * FROM VeeamRecovery WHERE status = 'RecoveryStarted' AND confidenceBelowThreshold = true SINCE 30 days ago
-
--- Rejections correlated with low confidence
-SELECT * FROM VeeamRecovery WHERE status = 'RecoveryRejected' AND confidenceBelowThreshold = true SINCE 30 days ago
 
 -- Expired tokens (operators too slow or alert noise)
 SELECT count(*) FROM VeeamRecovery WHERE status = 'RecoveryExpired' FACET vmName SINCE 7 days ago
@@ -317,8 +308,8 @@ SELECT * FROM VeeamRecovery WHERE status = 'NoCleanRestorePoints' SINCE 7 days a
 ---
 
 ## Version History
-- 1.0 Initial version
-├── docker-compose.yml
-├── requirements.txt
-└── .env.example
-```
+- 1.0 (Apr 14 2026)
+  - Initial version
+    
+## Disclaimer
+This script is not officially supported by Veeam Software. Use it at your own risk.
