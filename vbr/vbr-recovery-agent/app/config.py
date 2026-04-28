@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Veeam
-    VEEAM_URL: str
+    VEEAM_URL: str                          # e.g. https://veeam.corp.local:9419
     VEEAM_USERNAME: str
     VEEAM_PASSWORD: str
     VEEAM_VERIFY_SSL: bool = True
@@ -16,17 +16,18 @@ class Settings(BaseSettings):
     # Recovery policy
     CONFIRMATION_TTL_MINUTES: int = 30
     RESTORE_CONFIDENCE_THRESHOLD: int = 70          # minimum score for a restore point to be considered safe
-    PREFERRED_REPOSITORIES: list[str] = []          # repo names that receive a score bonus; JSON array or comma-separated
+    PREFERRED_REPOSITORIES: str = ""                # repo names that receive a score bonus; JSON array or comma-separated
 
-    @field_validator("PREFERRED_REPOSITORIES", mode="before")
-    @classmethod
-    def _parse_repo_list(cls, v: Any) -> list[str]:
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except (json.JSONDecodeError, ValueError):
-                return [r.strip() for r in v.split(",") if r.strip()]
-        return v or []
+    @property
+    def preferred_repositories_list(self) -> list[str]:
+        v = self.PREFERRED_REPOSITORIES.strip()
+        if not v:
+            return []
+        try:
+            result = json.loads(v)
+            return result if isinstance(result, list) else []
+        except (json.JSONDecodeError, ValueError):
+            return [r.strip() for r in v.split(",") if r.strip()]
 
     # New Relic
     NR_ACCOUNT_ID: str

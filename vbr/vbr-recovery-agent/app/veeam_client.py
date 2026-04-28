@@ -269,7 +269,7 @@ class VeeamClient:
 
         # 4. Repository bonus
         repo_score = 0
-        preferred = settings.PREFERRED_REPOSITORIES
+        preferred = settings.preferred_repositories_list
         if preferred and point.repositoryName:
             if any(r.lower() in point.repositoryName.lower() for r in preferred):
                 repo_score = 10
