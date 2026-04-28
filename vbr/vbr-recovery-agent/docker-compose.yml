@@ -1,0 +1,31 @@
+services:
+  veeam-recovery-agent:
+    build: .
+    container_name: veeam-recovery-agent
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # ── Veeam ──────────────────────────────────────────────────────────────
+      VEEAM_URL: ${VEEAM_URL}
+      VEEAM_USERNAME: ${VEEAM_USERNAME}
+      VEEAM_PASSWORD: ${VEEAM_PASSWORD}
+      VEEAM_VERIFY_SSL: ${VEEAM_VERIFY_SSL:-true}
+      VEEAM_API_VERSION: ${VEEAM_API_VERSION:-1.3-rev1}
+
+      # ── Recovery policy ────────────────────────────────────────────────────
+      CONFIRMATION_TTL_MINUTES: ${CONFIRMATION_TTL_MINUTES:-30}
+      RESTORE_CONFIDENCE_THRESHOLD: ${RESTORE_CONFIDENCE_THRESHOLD:-70}
+      PREFERRED_REPOSITORIES: ${PREFERRED_REPOSITORIES:-}
+
+      # ── New Relic ───────────────────────────────────────────────────────────
+      NR_ACCOUNT_ID: ${NR_ACCOUNT_ID}
+      NR_LICENSE_KEY: ${NR_LICENSE_KEY}
+      NR_EVENTS_ENDPOINT: ${NR_EVENTS_ENDPOINT:-https://insights-collector.eu01.nr-data.net/v1/accounts/{account_id}/events}
+      NR_WEBHOOK_SECRET: ${NR_WEBHOOK_SECRET:-}
+
+      # ── Security ───────────────────────────────────────────────────────────
+      AGENT_API_KEY: ${AGENT_API_KEY:-}
+      ALLOW_UNAUTHENTICATED_DEV: ${ALLOW_UNAUTHENTICATED_DEV:-false}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
