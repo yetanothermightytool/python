@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Veeam
-    VEEAM_URL: str                          # e.g. https://veeam.corp.local:9419
+    VEEAM_URL: str
     VEEAM_USERNAME: str
     VEEAM_PASSWORD: str
     VEEAM_VERIFY_SSL: bool = True
