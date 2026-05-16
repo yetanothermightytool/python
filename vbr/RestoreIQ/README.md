@@ -4,9 +4,6 @@ When a security incident hits, the question is not just *do we have a backup*  I
 
 It connects to your Veeam Backup & Replication server, pulls restore points for all protected workloads across every platform, and cross-references them with Veeam's own malware detection events. Each restore point receives a confidence score that weighs its malware status, how far it sits from a potential infection window, whether neighboring restore points are already compromised, and whether it lives on a preferred repository. The result is a prioritised, at-a-glance HTML report that tells you which machines are clean and ready to recover, which need a closer look, and which are actively infected, before you start the restore.
 
- [![Open Live Demo](https://img.shields.io/badge/Preview-Live%20Demo-6366f1?style=for-the-badge)](https://htmlpreview.github.io/?https://github.com/yetanothermi
-  ghtytool/python/blob/main/vbr/RestoreIQ/dashboard.html)
-
 The report runs as a single self-contained HTML file with no external dependencies. Open it in any browser, toggle between dark and light mode, expand any row for the full restore point history and malware event timeline, and click the **?** icon for a full explanation of how the score is calculated.
 
 ## Features
