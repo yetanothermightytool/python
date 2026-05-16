@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RestoreIQ</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Theme tokens ── */
+:root {
+  --bg:          #0f172a; --surface:    #1e293b; --surface2:  #111827;
+  --surface3:    #0a1020; --border:     #334155; --border2:   #1e3a5f;
+  --text:        #e2e8f0; --text-muted: #94a3b8; --text-dim:  #64748b;
+  --text-sub:    #cbd5e1; --hint:       #475569; --hover:     #263244;
+  --thead-bg:    #0f172a; --sub-thead:  #0d1a2a; --sub-bg:    #111827;
+  --detail-bg:   #0a1020; --bar-bg:     #334155;
+  --modal-bg:    #1e293b; --modal-ol:   rgba(0,0,0,.65);
+  --card-lbl:    #94a3b8;
+}
+body.light {
+  --bg:          #f1f5f9; --surface:    #ffffff; --surface2:  #f8fafc;
+  --surface3:    #f1f5f9; --border:     #e2e8f0; --border2:   #cbd5e1;
+  --text:        #0f172a; --text-muted: #475569; --text-dim:  #64748b;
+  --text-sub:    #334155; --hint:       #94a3b8; --hover:     #f1f5f9;
+  --thead-bg:    #f8fafc; --sub-thead:  #f1f5f9; --sub-bg:    #f8fafc;
+  --detail-bg:   #f8fafc; --bar-bg:     #e2e8f0;
+  --modal-bg:    #ffffff; --modal-ol:   rgba(0,0,0,.45);
+  --card-lbl:    #64748b;
+}
+
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); min-height: 100vh;
+       transition: background .2s, color .2s; }
+
+/* ── Demo banner ── */
+.demo-banner { background: #7c3aed; color: #fff; text-align: center; padding: 9px 0;
+               font-weight: 700; letter-spacing: 2px; font-size: 13px; }
+
+/* ── Header ── */
+header { background: var(--surface); border-bottom: 1px solid var(--border);
+         padding: 18px 32px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+header h1 { font-size: 18px; font-weight: 700; }
+header .meta { font-size: 11px; color: var(--text-dim); text-align: right; line-height: 1.6; }
+.sub { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+.hdr-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+/* ── Theme toggle ── */
+.theme-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+             border-radius: 20px; padding: 5px 14px; font-size: 12px; font-weight: 600;
+             cursor: pointer; display: flex; align-items: center; gap: 6px;
+             transition: background .15s, border-color .15s; white-space: nowrap; }
+.theme-btn:hover { border-color: #60a5fa; }
+
+/* ── Container / cards ── */
+.container { max-width: 1280px; margin: 0 auto; padding: 24px 32px; }
+.cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 24px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+        padding: 18px; text-align: center; }
+.card-num { font-size: 34px; font-weight: 800; line-height: 1; margin-bottom: 5px; }
+.card-lbl { font-size: 11px; color: var(--card-lbl); text-transform: uppercase; letter-spacing: 1px; }
+.green { color: #22c55e; } .orange { color: #f97316; }
+.red   { color: #ef4444; } .gray   { color: #6b7280; } .blue  { color: #60a5fa; }
+
+/* ── Section / hints ── */
+.section-title { font-size: 13px; font-weight: 600; color: var(--text-muted);
+                 text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+.hint { font-size: 11px; color: var(--hint); margin-bottom: 10px; }
+
+/* ── Main table ── */
+table.main { width: 100%; border-collapse: collapse; background: var(--surface);
+             border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+table.main thead tr { background: var(--thead-bg); }
+table.main th { padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 600;
+                text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+table.main td { padding: 11px 16px; border-top: 1px solid var(--border); font-size: 13px; }
+.vm-row { cursor: pointer; transition: background .12s; }
+.vm-row:hover { background: var(--hover); }
+.detail-row { display: none; }
+.detail-row td { background: var(--detail-bg); padding: 0; border-top: none; }
+.detail-panel { padding: 16px 24px; border-top: 1px solid var(--border); }
+
+/* ── Sub-table (restore points / events) ── */
+.sub-table { width: 100%; border-collapse: collapse; background: var(--sub-bg);
+             border: 1px solid var(--border2); border-radius: 6px; overflow: hidden;
+             font-size: 12px; margin-top: 8px; }
+.sub-table th { background: var(--sub-thead); padding: 7px 12px; text-align: left;
+                font-size: 10px; font-weight: 600; text-transform: uppercase;
+                letter-spacing: 1px; color: var(--text-dim); }
+.sub-table td { padding: 7px 12px; border-top: 1px solid var(--border); color: var(--text-sub); }
+.sub-heading { font-size: 12px; font-weight: 600; color: var(--text-muted);
+               margin-top: 14px; margin-bottom: 4px; }
+.no-data { font-size: 12px; color: var(--hint); font-style: italic; margin-top: 4px; }
+.error-msg { font-size: 13px; color: #a78bfa; font-family: monospace; margin-top: 4px; }
+
+/* ── Badges / dots ── */
+.badge { display: inline-block; padding: 2px 9px; border-radius: 9999px;
+         font-size: 11px; font-weight: 600; color: #fff; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; }
+.center { text-align: center; }
+
+/* ── Score cell ── */
+.score-wrap { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; }
+.score-num { font-size: 16px; font-weight: 700; line-height: 1; }
+.score-bar-bg { width: 60px; height: 4px; background: var(--bar-bg); border-radius: 2px; overflow: hidden; }
+.score-bar { height: 4px; border-radius: 2px; }
+
+/* ── Event count ── */
+.ev-badge { display: inline-block; min-width: 22px; text-align: center;
+            font-weight: 600; font-size: 13px; color: var(--text-dim); }
+.ev-warn { color: #f59e0b; }
+
+/* ── Help (?) button ── */
+.help-btn { display: inline-flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--text-dim);
+            color: var(--text-dim); font-size: 10px; font-weight: 700; cursor: pointer;
+            margin-left: 5px; vertical-align: middle; line-height: 1;
+            transition: border-color .15s, color .15s; background: transparent; }
+.help-btn:hover { border-color: #60a5fa; color: #60a5fa; }
+
+/* ── Modal ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: var(--modal-ol);
+                 z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--modal-bg); border: 1px solid var(--border); border-radius: 14px;
+         padding: 28px 32px; max-width: 620px; width: 90%; max-height: 85vh;
+         overflow-y: auto; position: relative; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+.modal h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.modal .modal-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
+.modal-close { position: absolute; top: 16px; right: 20px; background: none; border: none;
+               color: var(--text-dim); font-size: 20px; cursor: pointer; line-height: 1;
+               padding: 2px 6px; border-radius: 4px; }
+.modal-close:hover { color: var(--text); }
+.modal h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--text-muted); margin: 18px 0 8px; }
+.modal p { font-size: 13px; line-height: 1.6; color: var(--text-sub); margin-bottom: 8px; }
+.modal table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+.modal table th { text-align: left; padding: 7px 10px; background: var(--thead-bg);
+                  color: var(--text-dim); font-size: 10px; text-transform: uppercase;
+                  letter-spacing: 1px; border-bottom: 1px solid var(--border); }
+.modal table td { padding: 7px 10px; border-bottom: 1px solid var(--border);
+                  color: var(--text-sub); vertical-align: top; line-height: 1.5; }
+.modal table tr:last-child td { border-bottom: none; }
+.chip { display: inline-block; padding: 1px 7px; border-radius: 9999px; font-size: 10px;
+        font-weight: 700; color: #fff; margin-right: 3px; }
+.legend { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.legend-row { display: flex; align-items: center; gap: 10px; font-size: 12px;
+              color: var(--text-sub); }
+.legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+@media (max-width: 1100px) {
+  .cards { grid-template-columns: repeat(3, 1fr); }
+  .container { padding: 16px; }
+  header { flex-wrap: wrap; }
+}</style>
+</head>
+<body>
+<div class="demo-banner">&#9888; DEMO MODE &mdash; Sample Data Only</div>
+<header>
+  <div>
+    <h1>RestoreIQ</h1>
+    <div class="sub">Malware event window: last 7 days &nbsp;&bull;&nbsp; Confidence threshold: 70</div>
+  </div>
+  <div class="hdr-controls">
+    <div class="meta">Generated<br>2026-05-16 11:32:16 UTC</div>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">&#9728; Light Mode</button>
+  </div>
+</header>
+<div class="container">
+  
+<div class="cards">
+  <div class="card"><div class="card-num green">2</div><div class="card-lbl">Clean</div></div>
+  <div class="card"><div class="card-num orange">2</div><div class="card-lbl">Suspicious / Low Conf.</div></div>
+  <div class="card"><div class="card-num red">1</div><div class="card-lbl">Infected</div></div>
+  <div class="card"><div class="card-num gray">1</div><div class="card-lbl">No Data</div></div>
+  <div class="card"><div class="card-num" style="color:#7c3aed">0</div><div class="card-lbl">API Errors</div></div>
+  <div class="card"><div class="card-num blue">6</div><div class="card-lbl">Total</div></div>
+</div>
+  <div class="section-title">Virtual Machines</div>
+  <p class="hint">Click a row to expand restore point details.</p>
+  <table class="main">
+    <thead>
+      <tr>
+        <th>VM Name</th>
+        <th>Status</th>
+        <th class="center">
+          Confidence Score
+          <button class="help-btn" onclick="event.stopPropagation();openModal()" title="How is the score calculated?">?</button>
+        </th>
+        <th>Best Restore Point</th>
+        <th>RP Malware Status</th>
+        <th class="center">Malware Events (7d)</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+<tr class="vm-row" onclick="tog('d-prod-dc-01')">
+  <td><span class="dot" style="background:#ef4444"></span>prod-dc-01</td>
+  <td><span class="badge" style="background:#ef4444">Infected</span></td>
+  <td class="center"><div class='score-wrap'><span class='score-num' style='color:#f59e0b'>55</span><div class='score-bar-bg'><div class='score-bar' style='width:55%;background:#f59e0b'></div></div></div></td>
+  <td>2026-05-14 07:32</td>
+  <td><span class='badge' style='background:#22c55e'>Clean</span></td>
+  <td class="center"><span class='ev-badge ev-warn'>3</span></td>
+</tr>
+<tr class="detail-row" id="d-prod-dc-01">
+  <td colspan="6"><div class="detail-panel"><table class='sub-table'><thead><tr><th>Time</th><th>Type</th><th>Malware Status</th><th>Eligible</th></tr></thead><tbody><tr><td>2026-05-16 07:32</td><td>Increment</td><td><span class='badge' style='background:#ef4444'>Infected</span></td><td class='center'>✗</td></tr><tr><td>2026-05-15 19:32</td><td>Increment</td><td><span class='badge' style='background:#ef4444'>Infected</span></td><td class='center'>✗</td></tr><tr><td>2026-05-15 07:32</td><td>Increment</td><td><span class='badge' style='background:#f59e0b'>Suspicious</span></td><td class='center'>✓</td></tr><tr><td>2026-05-14 07:32</td><td>Full</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr></tbody></table><p class='sub-heading'>Malware Events (last 7d)</p><table class='sub-table'><thead><tr><th>Time</th><th>Severity</th><th>Details</th></tr></thead><tbody><tr><td>2026-05-16 06:32</td><td><span class='badge' style='background:#ef4444'>Critical</span></td><td>Suspicious file system activity detected</td></tr><tr><td>2026-05-15 18:32</td><td><span class='badge' style='background:#ef4444'>Critical</span></td><td>Suspicious file system activity detected</td></tr><tr><td>2026-05-15 06:32</td><td><span class='badge' style='background:#f59e0b'>Warning</span></td><td>Suspicious file system activity detected</td></tr></tbody></table></div></td>
+</tr>
+<tr class="vm-row" onclick="tog('d-prod-app-02')">
+  <td><span class="dot" style="background:#f59e0b"></span>prod-app-02</td>
+  <td><span class="badge" style="background:#f59e0b">Suspicious</span></td>
+  <td class="center"><div class='score-wrap'><span class='score-num' style='color:#22c55e'>80</span><div class='score-bar-bg'><div class='score-bar' style='width:80%;background:#22c55e'></div></div></div></td>
+  <td>2026-05-15 08:32</td>
+  <td><span class='badge' style='background:#22c55e'>Clean</span></td>
+  <td class="center"><span class='ev-badge ev-warn'>2</span></td>
+</tr>
+<tr class="detail-row" id="d-prod-app-02">
+  <td colspan="6"><div class="detail-panel"><table class='sub-table'><thead><tr><th>Time</th><th>Type</th><th>Malware Status</th><th>Eligible</th></tr></thead><tbody><tr><td>2026-05-16 08:32</td><td>Increment</td><td><span class='badge' style='background:#f59e0b'>Suspicious</span></td><td class='center'>✓</td></tr><tr><td>2026-05-15 20:32</td><td>Increment</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr><tr><td>2026-05-15 08:32</td><td>Full</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr></tbody></table><p class='sub-heading'>Malware Events (last 7d)</p><table class='sub-table'><thead><tr><th>Time</th><th>Severity</th><th>Details</th></tr></thead><tbody><tr><td>2026-05-16 07:32</td><td><span class='badge' style='background:#f59e0b'>Warning</span></td><td>Suspicious file system activity detected</td></tr><tr><td>2026-05-16 05:32</td><td><span class='badge' style='background:#f59e0b'>Warning</span></td><td>Suspicious file system activity detected</td></tr></tbody></table></div></td>
+</tr>
+<tr class="vm-row" onclick="tog('d-prod-db-01')">
+  <td><span class="dot" style="background:#f59e0b"></span>prod-db-01</td>
+  <td><span class="badge" style="background:#f59e0b">Suspicious</span></td>
+  <td class="center"><div class='score-wrap'><span class='score-num' style='color:#22c55e'>100</span><div class='score-bar-bg'><div class='score-bar' style='width:100%;background:#22c55e'></div></div></div></td>
+  <td>2026-05-15 10:32</td>
+  <td><span class='badge' style='background:#22c55e'>Clean</span></td>
+  <td class="center"><span class='ev-badge ev-warn'>1</span></td>
+</tr>
+<tr class="detail-row" id="d-prod-db-01">
+  <td colspan="6"><div class="detail-panel"><table class='sub-table'><thead><tr><th>Time</th><th>Type</th><th>Malware Status</th><th>Eligible</th></tr></thead><tbody><tr><td>2026-05-16 10:32</td><td>Increment</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr><tr><td>2026-05-15 22:32</td><td>Increment</td><td><span class='badge' style='background:#3b82f6'>Informative</span></td><td class='center'>✓</td></tr><tr><td>2026-05-15 10:32</td><td>Full</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr></tbody></table><p class='sub-heading'>Malware Events (last 7d)</p><table class='sub-table'><thead><tr><th>Time</th><th>Severity</th><th>Details</th></tr></thead><tbody><tr><td>2026-05-15 15:32</td><td><span class='badge' style='background:#3b82f6'>Information</span></td><td>Suspicious file system activity detected</td></tr></tbody></table></div></td>
+</tr>
+<tr class="vm-row" onclick="tog('d-dev-build-01')">
+  <td><span class="dot" style="background:#22c55e"></span>dev-build-01</td>
+  <td><span class="badge" style="background:#22c55e">Clean</span></td>
+  <td class="center"><div class='score-wrap'><span class='score-num' style='color:#22c55e'>100</span><div class='score-bar-bg'><div class='score-bar' style='width:100%;background:#22c55e'></div></div></div></td>
+  <td>2026-05-15 05:32</td>
+  <td><span class='badge' style='background:#22c55e'>Clean</span></td>
+  <td class="center"><span class='ev-badge'>0</span></td>
+</tr>
+<tr class="detail-row" id="d-dev-build-01">
+  <td colspan="6"><div class="detail-panel"><table class='sub-table'><thead><tr><th>Time</th><th>Type</th><th>Malware Status</th><th>Eligible</th></tr></thead><tbody><tr><td>2026-05-16 05:32</td><td>Increment</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr><tr><td>2026-05-15 05:32</td><td>Full</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr></tbody></table><p class='sub-heading'>Malware Events (last 7d)</p><p class='no-data'>No malware events detected in this period.</p></div></td>
+</tr>
+<tr class="vm-row" onclick="tog('d-prod-web-01')">
+  <td><span class="dot" style="background:#22c55e"></span>prod-web-01</td>
+  <td><span class="badge" style="background:#22c55e">Clean</span></td>
+  <td class="center"><div class='score-wrap'><span class='score-num' style='color:#22c55e'>100</span><div class='score-bar-bg'><div class='score-bar' style='width:100%;background:#22c55e'></div></div></div></td>
+  <td>2026-05-15 09:32</td>
+  <td><span class='badge' style='background:#22c55e'>Clean</span></td>
+  <td class="center"><span class='ev-badge'>0</span></td>
+</tr>
+<tr class="detail-row" id="d-prod-web-01">
+  <td colspan="6"><div class="detail-panel"><table class='sub-table'><thead><tr><th>Time</th><th>Type</th><th>Malware Status</th><th>Eligible</th></tr></thead><tbody><tr><td>2026-05-16 09:32</td><td>Increment</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr><tr><td>2026-05-15 21:32</td><td>Increment</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr><tr><td>2026-05-15 09:32</td><td>Full</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr><tr><td>2026-05-14 09:32</td><td>Increment</td><td><span class='badge' style='background:#22c55e'>Clean</span></td><td class='center'>✓</td></tr></tbody></table><p class='sub-heading'>Malware Events (last 7d)</p><p class='no-data'>No malware events detected in this period.</p></div></td>
+</tr>
+<tr class="vm-row" onclick="tog('d-prod-files-01')">
+  <td><span class="dot" style="background:#6b7280"></span>prod-files-01</td>
+  <td><span class="badge" style="background:#6b7280">No Data</span></td>
+  <td class="center">—</td>
+  <td>—</td>
+  <td>—</td>
+  <td class="center"><span class='ev-badge'>0</span></td>
+</tr>
+<tr class="detail-row" id="d-prod-files-01">
+  <td colspan="6"><div class="detail-panel"><p class='no-data'>No restore points found.</p><p class='sub-heading'>Malware Events (last 7d)</p><p class='no-data'>No malware events detected in this period.</p></div></td>
+</tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="modal-overlay" id="scoreModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()" title="Close">&times;</button>
+    <h2>Confidence Score</h2>
+    <p class="modal-sub">Composite score (0 &ndash; 100) indicating how safe a restore point is for recovery.</p>
+
+    <h3>Score Components</h3>
+    <table>
+      <thead>
+        <tr><th>Component</th><th>Range</th><th>Details</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Malware Status</strong></td>
+          <td>0 &ndash; 60</td>
+          <td>
+            <span class="chip" style="background:#22c55e">Clean</span> 60 &nbsp;
+            <span class="chip" style="background:#3b82f6">Informative</span> 30 &nbsp;
+            <span class="chip" style="background:#6b7280">Unknown</span> 15 &nbsp;
+            <span class="chip" style="background:#f59e0b">Suspicious</span> 0 &nbsp;
+            <span class="chip" style="background:#ef4444">Infected</span> 0
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Safety Margin</strong></td>
+          <td>0 &ndash; 25</td>
+          <td>Time between restore point creation and now.<br>
+            &ge;&thinsp;24&thinsp;h&nbsp;&rarr;&nbsp;25 &nbsp;&bull;&nbsp;
+            &ge;&thinsp;12&thinsp;h&nbsp;&rarr;&nbsp;20 &nbsp;&bull;&nbsp;
+            &ge;&thinsp;4&thinsp;h&nbsp;&rarr;&nbsp;12 &nbsp;&bull;&nbsp;
+            &ge;&thinsp;1&thinsp;h&nbsp;&rarr;&nbsp;5 &nbsp;&bull;&nbsp;
+            &lt;&thinsp;1&thinsp;h&nbsp;&rarr;&nbsp;0
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Neighbor Contamination</strong></td>
+          <td>&minus;30 &ndash; +15</td>
+          <td>Infection state of restore points <em>newer</em> than this one.<br>
+            None infected/suspicious&nbsp;&rarr;&nbsp;+15<br>
+            Multiple infected or infected&thinsp;+&thinsp;suspicious&nbsp;&rarr;&nbsp;&minus;30<br>
+            Direct neighbor infected&nbsp;&rarr;&nbsp;&minus;20<br>
+            One infected (not direct)&nbsp;&rarr;&nbsp;&minus;10<br>
+            Direct neighbor suspicious&nbsp;&rarr;&nbsp;&minus;10<br>
+            Only suspicious&nbsp;&rarr;&nbsp;&minus;5
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Repository Bonus</strong></td>
+          <td>0 &ndash; +10</td>
+          <td>+10 if the restore point resides in a preferred repository
+              for this host (configured via <code>--repo-config</code> YAML file).
+              Without a config file this component scores 0.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Score Thresholds</h3>
+    <div class="legend">
+      <div class="legend-row"><div class="legend-dot" style="background:#22c55e"></div>
+        <span><strong>&ge; 70</strong> &mdash; Safe, meets the configured confidence threshold</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#f59e0b"></div>
+        <span><strong>40 &ndash; 69</strong> &mdash; Review recommended before restoring</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#ef4444"></div>
+        <span><strong>&lt; 40</strong> &mdash; High risk &mdash; restore with caution</span></div>
+    </div>
+
+    <h3>Overall VM Status</h3>
+    <table>
+      <thead><tr><th>Status</th><th>Condition</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chip" style="background:#22c55e">Clean</span></td>
+            <td>Best eligible RP score &ge; threshold, no infected/suspicious RPs, no malware events</td></tr>
+        <tr><td><span class="chip" style="background:#f59e0b">Suspicious</span></td>
+            <td>At least one suspicious RP or at least one malware event in the lookback window</td></tr>
+        <tr><td><span class="chip" style="background:#ef4444">Infected</span></td>
+            <td>At least one restore point is marked Infected</td></tr>
+        <tr><td><span class="chip" style="background:#f97316">Low Confidence</span></td>
+            <td>Best score is below the threshold but no infected/suspicious RPs found</td></tr>
+        <tr><td><span class="chip" style="background:#6b7280">No Data</span></td>
+            <td>No restore points found for this VM</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+function tog(id) {
+  var r = document.getElementById(id);
+  r.style.display = r.style.display === 'table-row' ? 'none' : 'table-row';
+}
+function openModal() {
+  document.getElementById('scoreModal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('scoreModal').classList.remove('open');
+}
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+
+(function() {
+  var saved = localStorage.getItem('veeam-dash-theme');
+  var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  var isDark = saved ? saved === 'dark' : prefersDark;
+  if (!isDark) document.body.classList.add('light');
+  updateThemeBtn(isDark);
+})();
+
+function toggleTheme() {
+  var isLight = document.body.classList.toggle('light');
+  var isDark = !isLight;
+  localStorage.setItem('veeam-dash-theme', isDark ? 'dark' : 'light');
+  updateThemeBtn(isDark);
+}
+function updateThemeBtn(isDark) {
+  var btn = document.getElementById('themeBtn');
+  if (btn) btn.innerHTML = isDark ? '&#9728; Light Mode' : '&#9790; Dark Mode';
+}</script>
+</body>
+</html>

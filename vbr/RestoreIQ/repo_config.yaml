@@ -1,0 +1,34 @@
+# Veeam Repository Configuration
+# Maps hosts (or groups of hosts) to their preferred backup repositories.
+# A restore point in a preferred repository receives a +10 confidence bonus.
+#
+# Usage:
+#   python3 dashboard.py --repo-config repo_config.yaml
+#
+# Rules:
+#   - Groups assign repos to multiple hosts at once.
+#   - The "hosts" section overrides group membership for a specific host.
+#   - Hosts with no entry here receive 0 repository bonus points.
+#   - Matching is case-insensitive substring: "gold" matches "Backup-Repo-Gold-01".
+
+groups:
+  production:
+    repos:
+      - repo-gold
+      - repo-offsite
+    hosts:
+      - prod-web-01
+      - prod-db-01
+      - prod-dc-01
+      - prod-files-01
+
+  development:
+    repos:
+      - repo-silver
+    hosts:
+      - dev-build-01
+
+# Per-host overrides — take precedence over any group assignment.
+hosts:
+  prod-db-01:
+    - repo-gold-exclusive
