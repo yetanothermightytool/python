@@ -12,9 +12,12 @@ Usage:
     python dashboard.py --days 14 --output report.html
 
 Required env vars (or .env file):
-    VEEAM_URL        https://veeam.corp.local:9419
-    VEEAM_USERNAME   administrator
-    VEEAM_PASSWORD   secret
+    VEEAM_URL             https://veeam.corp.local:9419
+    VEEAM_USERNAME        administrator
+    VEEAM_PASSWORD        secret
+
+Optional env vars:
+    VEEAM_API_VERSION     1.3-rev1 (default)
 """
 
 import argparse
@@ -40,7 +43,7 @@ try:
 except ImportError:
     _YAML_AVAILABLE = False
 
-VEEAM_API_VERSION = "1.3-rev1"
+VEEAM_API_VERSION = os.getenv("VEEAM_API_VERSION", "1.3-rev1")
 
 
 # ── Veeam Client ──────────────────────────────────────────────────────────────
