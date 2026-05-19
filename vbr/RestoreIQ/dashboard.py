@@ -110,11 +110,7 @@ class VeeamClient:
         return result
 
     async def get_restore_points(self, vm_name: str, limit: int = 20) -> list[dict]:
-        """GET /api/v1/restorePoints — all platforms, newest first.
-
-        Covers: VMware, HyperV, CloudDirector, WindowsPhysical,
-                LinuxPhysical, UnstructuredData.
-        """
+        """GET /api/v1/restorePoints filtered by VM name, newest first."""
         data = await self._get(
             "/api/v1/restorePoints",
             params={
@@ -126,6 +122,30 @@ class VeeamClient:
             },
         )
         return data.get("data", [])
+
+    async def list_all_restore_points(self, days: int) -> list[dict]:
+        """GET /api/v1/restorePoints — all VMs, paginated, filtered to last N days."""
+        result = []
+        skip = 0
+        limit = 200
+        after = datetime.now(timezone.utc) - timedelta(days=days)
+        while True:
+            data = await self._get(
+                "/api/v1/restorePoints",
+                params={
+                    "orderColumn": "CreationTime",
+                    "orderAsc": False,
+                    "createdAfterFilter": after.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "skip": skip,
+                    "limit": limit,
+                },
+            )
+            page = data.get("data", [])
+            result.extend(page)
+            if len(page) < limit:
+                break
+            skip += limit
+        return result
 
     async def enrich_with_repository(self, points: list[dict]) -> None:
         """Fetch repositoryName for each restore point via GET /api/v1/backups/{backupId}."""
@@ -144,12 +164,12 @@ class VeeamClient:
             p["repositoryName"] = info.get("repositoryName")
 
     async def get_malware_events(self, vm_name: str, after: datetime) -> list[dict]:
-        """GET /api/v1/malwareDetection/suspiciousActivityEvents for a VM."""
+        """GET /api/v1/malwareDetection/events for a VM."""
         try:
             data = await self._get(
-                "/api/v1/malwareDetection/suspiciousActivityEvents",
+                "/api/v1/malwareDetection/events",
                 params={
-                    "nameFilter": vm_name,
+                    "machineNameFilter": vm_name,
                     "createdAfterFilter": after.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                     "orderColumn": "DetectionTime",
                     "orderAsc": False,
@@ -371,30 +391,41 @@ async def fetch_all(client: VeeamClient, hostname: Optional[str], days: int) -> 
     after = datetime.now(timezone.utc) - timedelta(days=days)
 
     if hostname:
-        vms = [hostname]
-    else:
-        backups = await client.list_backups()
-        seen: set[str] = set()
-        vms = []
-        for b in backups:
-            name = b.get("name")
-            if name and name not in seen:
-                seen.add(name)
-                vms.append(name)
+        async def fetch_vm(vm_name: str) -> dict:
+            try:
+                rps, events = await asyncio.gather(
+                    client.get_restore_points(vm_name),
+                    client.get_malware_events(vm_name, after),
+                )
+                if rps:
+                    await client.enrich_with_repository(rps)
+                return {"vm": vm_name, "restore_points": rps, "malware_events": events}
+            except Exception as exc:
+                return {"vm": vm_name, "restore_points": [], "malware_events": [], "error": str(exc)}
 
-    async def fetch_vm(vm_name: str) -> dict:
+        return [await fetch_vm(hostname)]
+
+    # All VMs: fetch all RPs first, group by VM name, then get malware events per VM.
+    # Using restorePoints.name (= VM name) is correct; list_backups() returns job names which
+    # don't match the nameFilter on restorePoints.
+    all_rps = await client.list_all_restore_points(days)
+    if all_rps:
+        await client.enrich_with_repository(all_rps)
+
+    grouped: dict[str, list[dict]] = {}
+    for rp in all_rps:
+        name = rp.get("name")
+        if name:
+            grouped.setdefault(name, []).append(rp)
+
+    async def fetch_vm_events(vm_name: str, rps: list[dict]) -> dict:
         try:
-            rps, events = await asyncio.gather(
-                client.get_restore_points(vm_name),
-                client.get_malware_events(vm_name, after),
-            )
-            if rps:
-                await client.enrich_with_repository(rps)
+            events = await client.get_malware_events(vm_name, after)
             return {"vm": vm_name, "restore_points": rps, "malware_events": events}
         except Exception as exc:
-            return {"vm": vm_name, "restore_points": [], "malware_events": [], "error": str(exc)}
+            return {"vm": vm_name, "restore_points": rps, "malware_events": [], "error": str(exc)}
 
-    return list(await asyncio.gather(*[fetch_vm(v) for v in vms]))
+    return list(await asyncio.gather(*[fetch_vm_events(name, rps) for name, rps in grouped.items()]))
 
 
 # ── Summarize ─────────────────────────────────────────────────────────────────
@@ -1027,7 +1058,9 @@ async def amain() -> None:
             print("Create a .env file or export them. Use --demo for sample data.", file=sys.stderr)
             sys.exit(1)
 
-        client = VeeamClient(url, user, pwd, verify_ssl=not args.no_ssl_verify)
+        env_verify = os.getenv("VEEAM_VERIFY_SSL", "true").strip().lower() not in ("false", "0", "no")
+        verify_ssl = env_verify and not args.no_ssl_verify
+        client = VeeamClient(url, user, pwd, verify_ssl=verify_ssl)
         try:
             print(f"Connecting to {url} ...")
             raw = await fetch_all(client, args.hostname, args.days)
