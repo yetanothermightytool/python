@@ -57,7 +57,6 @@ def get_api_version(host: str, port: int, insecure: bool, timeout: float, spec_u
         "spec_url": resolved_spec_url,
         "title": info.get("title"),
         "version": info.get("version"),
-        "prev_version": info.get("x-veeam-prev-version"),
     }
 
 
