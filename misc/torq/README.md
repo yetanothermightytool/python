@@ -8,8 +8,8 @@ Pulls restore points for all protected workloads (VMs, physical hosts, NFS/SMB s
 
 ## Flow
 
-1. **List Restore Points** (Veeam step) – all restore points, last N days
-2. **List Malware Detection Events** (Veeam step) – malware events, last N days
+1. **List Restore Points** (Veeam step) 
+2. **List Malware Detection Events** (Veeam step)
 3. **Python step** – scores each restore point, groups by workload, returns a sorted JSON array
 4. Downstream: loop over the array, branch on `status`
 
