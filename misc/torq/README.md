@@ -33,18 +33,17 @@ Pulls restore points for all protected workloads (VMs, physical hosts, NFS/SMB s
 | `no_data` | No restore points found for this workload |
 
 ## Output (per entry)
-
 ```json
 {
   "workload": "string",
   "status": "clean | suspicious | infected | low_confidence | no_data",
   "best_score": 0,
   "best_rp_time": "ISO timestamp",
-  "best_malware": "Clean | Informative | Suspicious | Infected",
-  "event_count": 0
+  "best_rp_malware_status": "Clean | Informative | Suspicious | Infected",
+  "event_count": 0,
+  "top_event_type": "RansomwareNotes | EncryptedData | IndicatorOfCompromise | MalwareExtensions | YaraScan | AntivirusScan | DeletedUsefulFiles | RenamedFiles | Unknown | null"
 }
 ```
-
 ## Notes
 
 - "Workload" covers VMs, physical hosts, and unstructured data (NFS/SMB) restore points alike, eligibility is based purely on malware status, not VM-only operations like Instant Recovery.
