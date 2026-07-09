@@ -16,11 +16,15 @@ Torq wiring:
 import json
 from datetime import datetime, timezone
 
-# ── INPUT (replace with Torq step references) ──────────────────────────────
-restore_points = json.loads('''{{ $.list_restore_points.result }}''')
-malware_events = json.loads('''{{ $.list_malware_events.result }}''')
-threshold      = int('''{{ $.workflow_parameters.confidence_threshold }}''' or 70)
-preferred_repos = []  # optional: ["repo-gold"] per host, or wire to a workspace variable
+# ── INPUT ────────────────────────────────────────────────────────────────
+# Torq wraps native step responses under api_object. Type {{ $.  in the
+# editor for the malware-events step and confirm it also ends in .data,
+# same pattern as the restore points step below.
+restore_points = json.loads('''{{ $.list_restore_points.api_object.data }}''')
+malware_events = json.loads('''{{ $.<your_malware_events_step>.api_object.data }}''')
+
+threshold = 70
+preferred_repos = []  # optional: ["repo-gold"] per host
 
 _MALWARE_SCORES = {"Clean": 60, "Informative": 30, "Suspicious": 0, "Infected": 0}
 
