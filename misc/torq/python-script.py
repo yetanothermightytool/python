@@ -3,14 +3,13 @@
 RestoreIQ scoring logic for a Torq "Run an inline Python script" step.
 Pure functions only, no httpx / html / file output. Feed it Veeam restore
 points + malware events (fetched by Torq's native Veeam B&R steps), get
-back a scored, sorted JSON summary per workload (VM, physical host, or
-NFS/SMB share) on stdout.
+back a scored, sorted JSON summary per VM on stdout.
 
 Torq wiring:
 1. Fetch restore points with the Veeam "List Restore Points" step.
 2. Fetch malware events with the Veeam "List Malware Detection Events" step.
-3. Drop this script into a Python step, replace the two INPUT lines below
-   with the actual $. references to those two steps.
+3. Drop this script into a Python step, replace the three INPUT lines below
+   with the actual $. references to those two steps (and workflow params).
 4. Downstream, read $.<this_step_name>.stdout and branch on "status".
 """
 
@@ -18,9 +17,9 @@ import json
 from datetime import datetime, timezone
 
 # ── INPUT ────────────────────────────────────────────────────────────────
-# Torq wraps native step responses under api_object. Raw strings (r'''...''')
-# are required here, otherwise Python un-escapes the backslashes in Windows
-# paths before json.loads() sees them, and parsing breaks.
+# Torq wraps native step responses under api_object. Type {{ $.  in the
+# editor for the malware-events step and confirm it also ends in .data,
+# same pattern as the restore points step below.
 restore_points = json.loads(r'''{{ $.list_restore_points.api_object.data }}''')
 malware_events = json.loads(r'''{{ $.list_malware_events.api_object.data }}''')
 
@@ -28,6 +27,23 @@ threshold = 70
 preferred_repos = []  # optional: ["repo-gold"] per host
 
 _MALWARE_SCORES = {"Clean": 60, "Informative": 30, "Suspicious": 0, "Infected": 0}
+
+# Highest-relevance type wins, not most frequent. A single RansomwareNotes
+# hit matters more than fifty routine AntivirusScan hits.
+_TYPE_PRIORITY = [
+    "RansomwareNotes", "EncryptedData", "IndicatorOfCompromise", "MalwareExtensions",
+    "YaraScan", "AntivirusScan", "DeletedUsefulFiles", "RenamedFiles", "Unknown",
+]
+
+
+def top_event_type(events):
+    types = {ev.get("type") for ev in events if ev.get("type")}
+    if not types:
+        return None
+    for t in _TYPE_PRIORITY:
+        if t in types:
+            return t
+    return sorted(types)[0]
 
 
 def score_restore_point(point, all_points, now, preferred_repos=None):
@@ -78,7 +94,7 @@ def compute_summary(workload, rps, events, now, threshold, preferred_repos=None)
     if not rps:
         return {"workload": workload, "status": "no_data", "best_score": None,
                 "best_rp_time": None, "best_malware": None,
-                "event_count": len(events)}
+                "event_count": len(events), "top_event_type": top_event_type(events)}
 
     # Malware status is the only universal eligibility signal, works for
     # VMs, physical hosts, and unstructured data (NFS/SMB) restore points
@@ -107,7 +123,7 @@ def compute_summary(workload, rps, events, now, threshold, preferred_repos=None)
     return {"workload": workload, "status": status, "best_score": best_score,
             "best_rp_time": best_rp["creationTime"],
             "best_malware": best_rp.get("malwareStatus"),
-            "event_count": len(events)}
+            "event_count": len(events), "top_event_type": top_event_type(events)}
 
 
 # ── Run ──────────────────────────────────────────────────────────────────
