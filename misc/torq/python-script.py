@@ -17,11 +17,11 @@ import json
 from datetime import datetime, timezone
 
 # ── INPUT ────────────────────────────────────────────────────────────────
-# Torq wraps native step responses under api_object. Type {{ $.  in the
-# editor for the malware-events step and confirm it also ends in .data,
-# same pattern as the restore points step below.
-restore_points = json.loads('''{{ $.list_restore_points.api_object.data }}''')
-malware_events = json.loads('''{{ $.<your_malware_events_step>.api_object.data }}''')
+# Torq wraps native step responses under api_object. Raw strings (r'''...''')
+# are required here, otherwise Python un-escapes the backslashes in Windows
+# paths before json.loads() sees them, and parsing breaks.
+restore_points = json.loads(r'''{{ $.list_restore_points.api_object.data }}''')
+malware_events = json.loads(r'''{{ $.list_malware_events.api_object.data }}''')
 
 threshold = 70
 preferred_repos = []  # optional: ["repo-gold"] per host
@@ -116,7 +116,9 @@ for rp in restore_points:
 
 events_by_vm = {}
 for ev in malware_events:
-    events_by_vm.setdefault(ev["machineName"], []).append(ev)
+    vm_name = (ev.get("machine") or {}).get("displayName")
+    if vm_name:
+        events_by_vm.setdefault(vm_name, []).append(ev)
 
 order = {"infected": 0, "suspicious": 1, "low_confidence": 2, "clean": 3, "no_data": 4}
 summaries = [
