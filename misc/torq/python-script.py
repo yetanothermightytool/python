@@ -93,7 +93,7 @@ def score_restore_point(point, all_points, now, preferred_repos=None):
 def compute_summary(workload, rps, events, now, threshold, preferred_repos=None):
     if not rps:
         return {"workload": workload, "status": "no_data", "best_score": None,
-                "best_rp_time": None, "best_malware": None,
+                "best_rp_time": None, "best_rp_malware_status": None,
                 "event_count": len(events), "top_event_type": top_event_type(events)}
 
     # Malware status is the only universal eligibility signal, works for
@@ -122,7 +122,7 @@ def compute_summary(workload, rps, events, now, threshold, preferred_repos=None)
 
     return {"workload": workload, "status": status, "best_score": best_score,
             "best_rp_time": best_rp["creationTime"],
-            "best_malware": best_rp.get("malwareStatus"),
+            "best_rp_malware_status": best_rp.get("malwareStatus"),
             "event_count": len(events), "top_event_type": top_event_type(events)}
 
 
