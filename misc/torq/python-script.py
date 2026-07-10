@@ -14,6 +14,7 @@ Torq wiring:
 """
 
 import json
+import re
 from datetime import datetime, timezone
 
 # ── INPUT ────────────────────────────────────────────────────────────────
@@ -34,6 +35,14 @@ _TYPE_PRIORITY = [
     "RansomwareNotes", "EncryptedData", "IndicatorOfCompromise", "MalwareExtensions",
     "YaraScan", "AntivirusScan", "DeletedUsefulFiles", "RenamedFiles", "Unknown",
 ]
+
+
+def normalize_name(name):
+    # Unstructured data (NAS/share) restore points get a Veeam-internal
+    # " Id: N" suffix, e.g. "\\nas-server\NASShare Id: 0", but the matching
+    # malware event only carries the plain share path. Strip it so both
+    # sides join on the same key without changing the displayed name.
+    return re.sub(r"\s+Id:\s*\d+$", "", name or "").strip()
 
 
 def top_event_type(events):
@@ -137,11 +146,11 @@ events_by_workload = {}
 for ev in malware_events:
     name = (ev.get("machine") or {}).get("displayName")
     if name:
-        events_by_workload.setdefault(name, []).append(ev)
+        events_by_workload.setdefault(normalize_name(name), []).append(ev)
 
 order = {"infected": 0, "suspicious": 1, "low_confidence": 2, "clean": 3, "no_data": 4}
 summaries = [
-    compute_summary(name, rps, events_by_workload.get(name, []), now, threshold, preferred_repos)
+    compute_summary(name, rps, events_by_workload.get(normalize_name(name), []), now, threshold, preferred_repos)
     for name, rps in grouped.items()
 ]
 summaries.sort(key=lambda s: (order.get(s["status"], 9), s["workload"]))
