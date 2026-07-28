@@ -140,7 +140,7 @@ Exit codes: `0` on success (including `Warning`), `1` if the session failed or t
 
 ## Repository Settings and Best Practices
 
-The values this script sends are working defaults for a demo setup, **not** a sizing recommendation. Concurrent tasks, throttling and block alignment should follow the Veeam best practices for your storage and your backup window — review them before using this in production, and adjust afterwards in the VBR console if needed. Everything the script sets can be changed later in the GUI under *Backup Infrastructure > Backup Repositories > Edit*.
+The values this script sends are working defaults for a demo setup, **not** a sizing recommendation. Concurrent tasks, throttling and block alignment should follow the Veeam best practices for your storage and your backup window. Review them before using this in production, and adjust afterwards in the VBR console if needed. Everything the script sets can be changed later in the GUI under *Backup Infrastructure > Backup Repositories*.
 
 Exposed as CLI arguments:
 
@@ -162,7 +162,7 @@ If your environment needs different values here, change them in the payload befo
 
 ## Notes
 
-- Credentials referenced by `--credentials-name` must already exist in VBR. Use type `Linux` for Linux hosts, type `Standard` for Windows hosts. The value is matched against the credential's **username**, falling back to its description; ambiguous matches abort instead of picking one.
+- Credentials referenced by `--credentials-name` **must already exist** in VBR. Use type `Linux` for Linux hosts, type `Standard` for Windows hosts. The value is matched against the credential's **username**, falling back to its description; ambiguous matches abort instead of picking one.
 - `--delete-backups` is opt-in; without it, backups in the repository are kept.
 - `--credentials-storage-type` defaults to `Permanent`. Use `SingleUse` if you don't want credentials stored persistently in the VBR configuration database.
 - `--write-cache-folder` defaults to the vPower cache path matching `--mount-server-type`: `C:\ProgramData\Veeam\Backup\IRCache\` for Windows, `/tmp/VeeamBackup/` for Linux. Override it if the default path is unsuitable — on Linux in particular, `/tmp` may be too small or cleared on reboot.
