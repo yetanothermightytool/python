@@ -9,9 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# (connect, read) — keeps the CLI from hanging on an unreachable VBR server
 HTTP_TIMEOUT = (5, 60)
-
 
 def load_config():
     endpoint = os.getenv("VEEAM_ENDPOINT")
@@ -52,7 +50,6 @@ def load_config():
 # populated by main() so that --help works without a complete .env
 CFG = {}
 
-
 def check_response(response):
     if not response.ok:
         try:
@@ -73,12 +70,6 @@ def api_headers(token=None, content_type=None):
 
 
 class TokenStore:
-    """Holds the OAuth pair.
-
-    An access token is only valid for 15 minutes, which is shorter than a large
-    repository rescan. Sessions are therefore polled with a store that renews
-    itself instead of a bare token string.
-    """
 
     def __init__(self, payload):
         self.update(payload)
@@ -155,7 +146,6 @@ def send(method, endpoint, token, content_type=None, **kwargs):
     if token.expired():
         renew(token)
     response = fire()
-    # belt and braces: the server is the authority on whether the token is stale
     if response.status_code == 401 and renew(token):
         response = fire()
     return response
@@ -178,7 +168,6 @@ def delete_veeam_rest_api(endpoint, token, params=None):
 
 
 def post_logout(token):
-    # runs in a finally block, so it must never mask the command's own outcome
     try:
         requests.post(
             f"{CFG['endpoint']}/api/oauth2/logout",
@@ -270,9 +259,6 @@ def resolve_repository_id(token, repo_name):
 
 
 def resolve_credential_id(token, name_filter, cred_type="Linux"):
-    # CredentialsModel has no "name" — the account lives in "username".
-    # nameFilter matches any credentials field and needs explicit * wildcards,
-    # so it is already exact here; match again locally to stay unambiguous.
     params = {"nameFilter": name_filter, "typeFilter": cred_type}
     data = get_veeam_rest_api("v1/credentials", token, params)
     items = data.get("data", [])
