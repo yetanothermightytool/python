@@ -20,14 +20,14 @@ VEEAM_USERNAME=restapiuser
 VEEAM_PASSWORD=changeme
 VEEAM_API_VERSION=1.3-rev1
 VEEAM_SSL_VERIFY=false
-VEEAM_SESSION_TIMEOUT=900
+VEEAM_SESSION_TIMEOUT=3600
 ```
 
 `VEEAM_ENDPOINT`, `VEEAM_USERNAME` and `VEEAM_PASSWORD` are required; the rest are optional.
 
 - `VEEAM_API_VERSION` defaults to `1.3-rev1`. Older revisions use a different `mountServer` structure and will reject the `add` payload.
 - `VEEAM_SSL_VERIFY` accepts `true`, `false`, or a path to a certificate file to pin a self-signed cert.
-- `VEEAM_SESSION_TIMEOUT` is the number of seconds to wait for a session to finish (default `900`). Raise it for large repositories, where a rescan can take considerably longer.
+- `VEEAM_SESSION_TIMEOUT` is the number of seconds to wait for a session to finish (default `3600`). The access token is renewed independently, see [Authentication](#authentication), so raise it further if a rescan on large storage regularly needs more than an hour.
 
 ## Usage
 
@@ -113,6 +113,19 @@ Both delete commands ask for confirmation. Pass `--yes` to skip the prompt when 
 ```
 ./repo-mgr.py delete --repo-name repo01 --delete-backups --yes
 ```
+
+## Authentication
+
+Logging in with `grant_type=password` returns an **access token that is valid for 15 minutes**, plus a refresh token valid for 14 days. Fifteen minutes is shorter than plenty of real operations, e.g. rescanning a large repository can easily run longer.
+
+This script keeps both tokens and renews them as needed:
+
+- Before each request, if the access token is about to expire (a minute of headroom), it is renewed pre-emptively.
+- If the server answers `401` regardless, the token is renewed and the request retried once.
+- Renewal uses `grant_type=refresh_token`. A refresh token can be used **only once**, so the new one from each response replaces the old one.
+- If the refresh token is spent or expired, the script falls back to a full username/password login.
+
+All of this is transparent. There are no flags, no configuration. It just means a long-running session is polled to completion instead of failing at the 15 minute mark.
 
 ## Session Tracking
 
