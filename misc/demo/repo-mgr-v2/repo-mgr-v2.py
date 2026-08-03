@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
 import re
 import sys
@@ -424,14 +425,43 @@ def validate_add_args(args):
         print("Note: --fast-clone is ignored for DellDataDomain repositories.")
 
 
-def advanced_repository_settings():
-    return {
-        "RotatedDriveCleanupMode": "Disabled",
-        "alignDataBlocks": True,
-        "decompressBeforeStoring": True,
-        "rotatedDrives": False,
-        "perVmBackup": True,
-    }
+def parse_advanced_overrides(values):
+    """--advanced perVmBackup=false -> {"perVmBackup": False}"""
+    overrides = {}
+    for item in values or []:
+        key, separator, raw = item.partition("=")
+        if not separator or not key.strip():
+            sys.exit(f"--advanced expects KEY=VALUE, got '{item}'.")
+        raw = raw.strip()
+        if raw.lower() in ("true", "false"):
+            value = raw.lower() == "true"
+        elif re.fullmatch(r"-?\d+", raw):
+            value = int(raw)
+        else:
+            value = raw
+        overrides[key.strip()] = value
+    return overrides
+
+
+def advanced_repository_settings(args):
+    """Defaults for the local types.
+
+    Deduplication appliances reject most of these outright — VBR answers
+    'Setting AlignDataBlocks is not supported for DellDataDomain' — so the block is
+    left empty for them and VBR applies its own defaults for the platform.
+    """
+    if args.type == "DellDataDomain":
+        settings = {}
+    else:
+        settings = {
+            "RotatedDriveCleanupMode": "Disabled",
+            "alignDataBlocks": True,
+            "decompressBeforeStoring": True,
+            "rotatedDrives": False,
+            "perVmBackup": True,
+        }
+    settings.update(parse_advanced_overrides(args.advanced))
+    return settings
 
 
 def build_mount_server(args, token):
@@ -464,7 +494,7 @@ def build_local_repository_body(args, token, mount_server):
         "maxTaskCount": args.task_count,
         # throttling stays off unless a rate is passed explicitly
         "readWriteLimitEnabled": args.read_write_rate is not None,
-        "advancedSettings": advanced_repository_settings(),
+        "advancedSettings": advanced_repository_settings(args),
     }
     if args.read_write_rate is not None:
         repository["readWriteRate"] = args.read_write_rate
@@ -511,8 +541,11 @@ def build_dell_data_domain_body(args, token, mount_server):
         "enableTaskLimit": True,
         "maxTaskCount": args.task_count,
         "enableReadWriteLimit": args.read_write_rate is not None,
-        "advancedSettings": advanced_repository_settings(),
     }
+    # only sent when --advanced asked for something; see advanced_repository_settings()
+    advanced = advanced_repository_settings(args)
+    if advanced:
+        repository["advancedSettings"] = advanced
     if args.read_write_rate is not None:
         repository["readWriteRate"] = args.read_write_rate
     if args.immutability_days is not None:
@@ -541,6 +574,27 @@ def add_repository(args, token):
         body = build_local_repository_body(args, token, mount_server)
     result = post_veeam_rest_api("v1/backupInfrastructure/repositories", token, body)
     return track(token, result, started_message=f"Creating repository '{args.name}'...")
+
+
+def show_repositories(args, token):
+    """Dump repositories as the API returns them.
+
+    Mostly useful to read back what VBR itself stored — the exact 'path' string of a
+    working repository is the only reliable reference for a type whose path format the
+    spec does not document, such as the storage unit of a Dell Data Domain.
+    """
+    params = {}
+    if args.repo_name:
+        params["nameFilter"] = args.repo_name
+    if args.type:
+        params["typeFilter"] = args.type
+    data = get_veeam_rest_api("v1/backupInfrastructure/repositories", token, params)
+    items = data.get("data", [])
+    if not items:
+        print("No repositories matched.")
+        return True
+    print(json.dumps(items, indent=2))
+    return True
 
 
 def rescan_repository(args, token):
@@ -603,6 +657,9 @@ def main():
                           help="Enable fast cloning on XFS volumes (LinuxLocal only)")
     add_repo.add_argument("--write-cache-folder", default=None,
                           help="Defaults to the vPower cache path matching --mount-server-type")
+    add_repo.add_argument("--advanced", action="append", metavar="KEY=VALUE",
+                          help="Override an advancedSettings field, repeatable "
+                               "(e.g. --advanced decompressBeforeStoring=true)")
     add_repo.add_argument("--dd-server", metavar="NAME",
                           help="Dell Data Domain server name, the 'ddServername' field "
                                "(DellDataDomain only, required; --host is accepted instead)")
@@ -619,6 +676,11 @@ def main():
     add_repo.add_argument("--immutability-days", type=int, default=None,
                           help="Enable DD Retention Lock for this many days "
                                "(DellDataDomain only, default: off)")
+
+    show = subparsers.add_parser("show", help="Print existing repositories as raw JSON")
+    show.add_argument("--repo-name", help="Filter by name (optional)")
+    show.add_argument("--type", help="Filter by repository type, e.g. DellDataDomain "
+                                     "(optional)")
 
     rescan = subparsers.add_parser("rescan", help="Rescan repository")
     rescan.add_argument("--repo-name", required=True)
@@ -648,6 +710,7 @@ def main():
         commands = {
             "add-host": add_host,
             "add": add_repository,
+            "show": show_repositories,
             "rescan": rescan_repository,
             "delete": delete_repository,
             "delete-host": delete_host,
