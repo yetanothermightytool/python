@@ -78,7 +78,7 @@ class VbrClient:
                 method, url, headers=headers, timeout=kwargs.pop("timeout", 120), **kwargs
             )
         except requests.exceptions.RequestException as exc:
-            raise VeeamError(f"Verbindung zu {url} fehlgeschlagen: {exc}") from exc
+            raise VeeamError(f"Connection to {url} failed: {exc}") from exc
 
         if response.status_code >= 400:
             detail = response.text
@@ -125,7 +125,7 @@ class VbrClient:
         self._token = result.get("access_token")
         self._refresh_token = result.get("refresh_token")
         if not self._token:
-            raise VeeamError("Kein access_token erhalten.")
+            raise VeeamError("No access_token returned.")
         return result
 
     def logout(self):
@@ -161,7 +161,7 @@ def get_mount_servers(client):
         result.append(
             {
                 "id": ms["id"],
-                "name": host.get("name", "<unbekannt>"),
+                "name": host.get("name", "<unknown>"),
                 "description": host.get("description", ""),
                 "hostType": host.get("type", ""),
                 "osType": ms.get("type", ""),
@@ -199,14 +199,11 @@ def resolve_mount_host_id(client, hostname):
     candidates = exact or short or partial
     if len(candidates) > 1:
         names = ", ".join(f"{s['name']} ({s['id']})" for s in candidates)
-        raise VeeamError(
-            f"Mount Server '{hostname}' ist nicht eindeutig. Treffer: {names}"
-        )
+        raise VeeamError(f"Mount server '{hostname}' is ambiguous. Matches: {names}")
 
-    available = ", ".join(s["name"] for s in servers) or "<keine>"
+    available = ", ".join(s["name"] for s in servers) or "<none>"
     raise VeeamError(
-        f"Mount Server '{hostname}' wurde nicht gefunden. "
-        f"Verfuegbare Mount Server: {available}"
+        f"Mount server '{hostname}' not found. Available mount servers: {available}"
     )
 
 
@@ -217,7 +214,7 @@ def find_latest_restore_point(client, object_name):
     ).get("data", [])
 
     if not objects:
-        raise VeeamError(f"Kein Backup-Objekt gefunden fuer '{object_name}'.")
+        raise VeeamError(f"No backup object found for '{object_name}'.")
 
     exact = [o for o in objects if (o.get("name") or "").lower() == object_name.lower()]
     if len(exact) == 1:
@@ -226,9 +223,7 @@ def find_latest_restore_point(client, object_name):
         backup_object = objects[0]
     else:
         names = ", ".join(f"{o.get('name')} ({o['id']})" for o in objects)
-        raise VeeamError(
-            f"Backup-Objekt '{object_name}' ist nicht eindeutig. Treffer: {names}"
-        )
+        raise VeeamError(f"Backup object '{object_name}' is ambiguous. Matches: {names}")
 
     points = client.get(
         f"/api/v1/backupObjects/{backup_object['id']}/restorePoints",
@@ -237,7 +232,7 @@ def find_latest_restore_point(client, object_name):
 
     if not points:
         raise VeeamError(
-            f"Backup-Objekt '{backup_object.get('name')}' hat keine Restore Points."
+            f"Backup object '{backup_object.get('name')}' has no restore points."
         )
 
     point = points[0]
@@ -281,14 +276,59 @@ def wait_for_session(client, session_id, timeout, interval=5):
         session = client.get(f"/api/v1/sessions/{session_id}")
         state = session.get("state")
         if state != last_state:
-            print(f"  Session-Status: {state} ({session.get('progressPercent', 0)}%)")
+            print(f"  Session state: {state} ({session.get('progressPercent', 0)}%)")
             last_state = state
         if state == "Stopped":
             return session
         time.sleep(interval)
-    raise VeeamError(
-        f"Timeout: Session {session_id} wurde innerhalb von {timeout}s nicht beendet."
-    )
+    raise VeeamError(f"Timeout: session {session_id} did not finish within {timeout}s.")
+
+
+def wait_for_mount(client, session, restore_point_id, timeout, interval=5):
+    """Poll until the disks are mounted. The publish session itself keeps
+    running as long as the disks stay published, so the mount state is the
+    signal to wait for, not the session state."""
+    deadline = time.time() + timeout
+    session_id = session.get("id")
+    last_state = None
+    while time.time() < deadline:
+        mount = find_mount(client, session, restore_point_id)
+        state = (mount or {}).get("mountState")
+        if state != last_state:
+            print(f"  Mount state: {state or 'pending'}")
+            last_state = state
+        if state == "Mounted":
+            return mount
+        if state in ("MountFailed", "UnmountFailed"):
+            raise VeeamError(f"Publish failed, mount state: {state}")
+
+        current = client.get(f"/api/v1/sessions/{session_id}")
+        result = current.get("result") or {}
+        if current.get("state") == "Stopped" and result.get("result") == "Failed":
+            raise VeeamError(f"Publish failed: {result.get('message')}")
+        time.sleep(interval)
+    raise VeeamError(f"Timeout: disks were not mounted within {timeout}s.")
+
+
+def wait_for_keypress(prompt):
+    """Block until any key is pressed (falls back to Enter)."""
+    print(prompt, end="", flush=True)
+    try:
+        import msvcrt  # Windows
+
+        msvcrt.getch()
+    except ImportError:
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    print("")
 
 
 def find_mount(client, session, restore_point_id):
@@ -311,21 +351,32 @@ def unpublish(client, mount_id):
     return client.post(f"/api/v1/dataIntegration/{mount_id}/unpublish")
 
 
+def do_unpublish(client, mount_id, timeout):
+    print(f"[*] Unpublishing mount {mount_id} ...")
+    session = unpublish(client, mount_id) or {}
+    session_id = session.get("id")
+    if session_id:
+        session = wait_for_session(client, session_id, timeout)
+    result = (session.get("result") or {}).get("result")
+    print(f"    Unpublish finished (result: {result}).")
+    return 0
+
+
 def print_mount_details(mount):
     info = mount.get("info") or {}
     print("")
     print("=" * 72)
-    print("Disk Publish erfolgreich")
+    print("Disk publish succeeded")
     print("=" * 72)
     print(f"  Mount ID          : {mount.get('id')}")
     print(f"  Mount State       : {mount.get('mountState')}")
     print(f"  Backup            : {mount.get('backupName')}")
     print(f"  Restore Point     : {mount.get('restorePointName')} ({mount.get('restorePointId')})")
-    print(f"  Modus             : {info.get('mode')}")
+    print(f"  Mode              : {info.get('mode')}")
     print(f"  iSCSI Target IP(s): {', '.join(info.get('serverIps') or []) or '-'}")
     print(f"  iSCSI Port        : {info.get('serverPort')}")
     print("")
-    print("  Publizierte Disks:")
+    print("  Published disks:")
     for disk in info.get("disks") or []:
         print(f"    - {disk.get('diskName')}")
         if disk.get("accessLink"):
@@ -333,12 +384,12 @@ def print_mount_details(mount):
         for mount_point in disk.get("mountPoints") or []:
             print(f"      Mount Point       : {mount_point}")
     print("")
-    print("  Auf dem Windows-Zielhost verbinden (Beispiel):")
+    print("  Connect from the Windows target host (example):")
     for ip in info.get("serverIps") or []:
         print(f"    iscsicli QAddTargetPortal {ip}")
     print("    iscsicli ListTargets")
     print("")
-    print("  Wieder aushaengen:")
+    print("  Unpublish later (e.g. after --keep):")
     print(f"    {Path(sys.argv[0]).name} --unpublish {mount.get('id')}")
     print("=" * 72)
 
@@ -346,12 +397,12 @@ def print_mount_details(mount):
 def build_parser():
     parser = argparse.ArgumentParser(
         description=(
-            "Veeam VBR Data Integration API: Windows-Backup Disks per iSCSI "
-            "publizieren. Verbindungsdaten kommen aus dem .env File."
+            "Veeam VBR Data Integration API: publish Windows backup disks via "
+            "iSCSI. Connection settings are read from the .env file."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Beispiele:\n"
+            "Examples:\n"
             "  %(prog)s --mount-server mountsrv01 --object FILESRV01\n"
             "  %(prog)s --mount-server mountsrv01.contoso.local "
             "--restore-point 58d8ce8c-2e04-47c7-8f11-a17875b1eed3\n"
@@ -364,64 +415,69 @@ def build_parser():
     parser.add_argument(
         "--mount-server",
         "-m",
-        help="Hostname/FQDN des Mount Servers. Die mountHostId wird daraus ermittelt.",
+        help="Hostname/FQDN of the mount server; its mountHostId is resolved from it.",
     )
     parser.add_argument(
         "--object",
         "-o",
-        help="Name des Backup-Objekts (Windows Server/VM). Es wird der neueste Restore Point verwendet.",
+        help="Backup object name (Windows server/VM). Uses its latest restore point.",
     )
     parser.add_argument(
         "--restore-point",
         "-r",
-        help="Restore Point ID (alternativ zu --object).",
+        help="Restore point ID (alternative to --object).",
     )
     parser.add_argument(
         "--allowed-ips",
         action="append",
         help=(
-            "IP-Adresse, die auf das iSCSI Target zugreifen darf. Mehrfach "
-            "verwendbar oder als Komma-Liste. Default: ALLOWED_IPS aus dem .env."
+            "IP address allowed to access the iSCSI target. Repeatable or "
+            "comma separated. Defaults to ALLOWED_IPS from the .env file."
         ),
     )
     parser.add_argument(
         "--disk",
         action="append",
         dest="disks",
-        help="Nur diese Disk publizieren (mehrfach verwendbar). Default: alle Disks.",
+        help="Publish only this disk (repeatable). Default: all disks.",
     )
-    parser.add_argument("--reason", help="Begruendung fuer die History.")
+    parser.add_argument("--reason", help="Reason logged in the VBR history.")
     parser.add_argument(
         "--timeout",
         type=int,
         default=900,
-        help="Maximale Wartezeit auf die Publish-Session in Sekunden (Default: 900).",
+        help="Seconds to wait for the publish session (default: 900).",
     )
     parser.add_argument(
         "--no-wait",
         action="store_true",
-        help="Nicht auf das Ende der Session warten, nur Session-ID ausgeben.",
+        help="Do not wait for the mount, just print the session ID and exit.",
+    )
+    parser.add_argument(
+        "--keep",
+        action="store_true",
+        help="Leave the disks published and exit instead of waiting for a key press.",
     )
     parser.add_argument(
         "--env-file",
         default=str(Path(__file__).with_name(".env")),
-        help="Pfad zum .env File (Default: .env neben dem Script).",
+        help="Path to the .env file (default: .env next to this script).",
     )
-    parser.add_argument("--json", action="store_true", help="Ergebnis als JSON ausgeben.")
+    parser.add_argument("--json", action="store_true", help="Print the result as JSON.")
 
     parser.add_argument(
-        "--list-mount-servers", action="store_true", help="Verfuegbare Mount Server auflisten."
+        "--list-mount-servers", action="store_true", help="List available mount servers."
     )
     parser.add_argument(
         "--list-restore-points",
-        metavar="OBJEKTNAME",
-        help="Restore Points eines Backup-Objekts auflisten.",
+        metavar="OBJECT_NAME",
+        help="List restore points of a backup object.",
     )
     parser.add_argument(
-        "--list-mounts", action="store_true", help="Aktuell publizierte Disks auflisten."
+        "--list-mounts", action="store_true", help="List currently published disks."
     )
     parser.add_argument(
-        "--unpublish", metavar="MOUNT_ID", help="Publizierte Disks wieder aushaengen."
+        "--unpublish", metavar="MOUNT_ID", help="Unpublish previously published disks."
     )
     return parser
 
@@ -451,7 +507,7 @@ def main(argv=None):
     ]
     if missing:
         parser.error(
-            f"Fehlende Werte im .env File ({args.env_file}): {', '.join(missing)}"
+            f"Missing values in .env file ({args.env_file}): {', '.join(missing)}"
         )
 
     mount_server = args.mount_server or os.environ.get("MOUNT_SERVER") or None
@@ -465,11 +521,12 @@ def main(argv=None):
     reason = args.reason or os.environ.get("PUBLISH_REASON") or None
 
     client = VbrClient(host, port, user, password, api_version, verify_ssl)
+    active_mount_id = None
 
     try:
-        print(f"[1] Anmeldung an https://{host}:{port} (API {api_version}) ...")
+        print(f"[1] Logging in to https://{host}:{port} (API {api_version}) ...")
         client.login()
-        print("    Anmeldung erfolgreich.")
+        print("    Login successful.")
 
         # info-only modes
         if args.list_mount_servers:
@@ -477,12 +534,12 @@ def main(argv=None):
             if args.json:
                 print(json.dumps(servers, indent=2, ensure_ascii=False))
             else:
-                print("\nMount Server:")
+                print("\nMount servers:")
                 for s in servers:
                     default = " [default]" if s["isDefault"] else ""
                     print(f"  {s['name']}{default}")
                     print(f"    ID       : {s['id']}   <- mountHostId")
-                    print(f"    OS/Typ   : {s['osType']} / {s['hostType']}")
+                    print(f"    OS/Type  : {s['osType']} / {s['hostType']}")
                     print(f"    Cache    : {s['writeCacheFolder']}")
             return 0
 
@@ -491,7 +548,7 @@ def main(argv=None):
             if args.json:
                 print(json.dumps(points, indent=2, ensure_ascii=False))
             else:
-                print(f"\nRestore Points fuer '{args.list_restore_points}':")
+                print(f"\nRestore points for '{args.list_restore_points}':")
                 for p in points:
                     print(
                         f"  {p.get('creationTime')}  {p.get('name')}  "
@@ -504,7 +561,7 @@ def main(argv=None):
             if args.json:
                 print(json.dumps(mounts, indent=2, ensure_ascii=False))
             else:
-                print("\nPublizierte Disks:")
+                print("\nPublished disks:")
                 for m in mounts:
                     info = m.get("info") or {}
                     print(
@@ -515,38 +572,31 @@ def main(argv=None):
             return 0
 
         if args.unpublish:
-            print(f"[2] Unpublish von Mount {args.unpublish} ...")
-            session = unpublish(client, args.unpublish)
-            session_id = (session or {}).get("id")
-            if session_id and not args.no_wait:
-                session = wait_for_session(client, session_id, args.timeout)
-            result = ((session or {}).get("result") or {}).get("result")
-            print(f"    Unpublish abgeschlossen (Ergebnis: {result}).")
-            return 0
+            return do_unpublish(client, args.unpublish, args.timeout)
 
         # publish
         if not mount_server:
             parser.error(
-                "Mount Server fehlt: --mount-server <hostname> angeben "
-                "(oder MOUNT_SERVER im .env setzen)."
+                "No mount server: pass --mount-server <hostname> "
+                "or set MOUNT_SERVER in the .env file."
             )
         if not args.restore_point and not args.object:
-            parser.error("Entweder --restore-point <id> oder --object <name> angeben.")
+            parser.error("Pass either --restore-point <id> or --object <name>.")
         if not allowed_ips:
             parser.error(
-                "Keine erlaubten IPs: --allowed-ips <ip>[,<ip>] angeben "
-                "(oder ALLOWED_IPS im .env setzen)."
+                "No allowed IPs: pass --allowed-ips <ip>[,<ip>] "
+                "or set ALLOWED_IPS in the .env file."
             )
 
-        print(f"[2] Mount Server '{mount_server}' aufloesen ...")
+        print(f"[2] Resolving mount server '{mount_server}' ...")
         mount_srv = resolve_mount_host_id(client, mount_server)
         print(f"    {mount_srv['name']} -> mountHostId {mount_srv['id']} ({mount_srv['osType']})")
 
         if args.restore_point:
             restore_point_id = args.restore_point
-            print(f"[3] Restore Point: {restore_point_id}")
+            print(f"[3] Restore point: {restore_point_id}")
         else:
-            print(f"[3] Neuesten Restore Point fuer '{args.object}' suchen ...")
+            print(f"[3] Looking up the latest restore point for '{args.object}' ...")
             point = find_latest_restore_point(client, args.object)
             restore_point_id = point["id"]
             print(
@@ -555,43 +605,52 @@ def main(argv=None):
             )
 
         print(
-            f"[4] Disk Publish starten (ISCSITarget, allowedIps={', '.join(allowed_ips)}) ..."
+            f"[4] Starting disk publish (ISCSITarget, allowedIps={', '.join(allowed_ips)}) ..."
         )
         session = publish_disks(
             client, restore_point_id, mount_srv["id"], allowed_ips, reason, args.disks
         )
         session_id = session.get("id")
-        print(f"    Session gestartet: {session_id}")
+        print(f"    Session started: {session_id}")
 
         if args.no_wait:
             if args.json:
                 print(json.dumps(session, indent=2, ensure_ascii=False))
             return 0
 
-        print("[5] Auf Abschluss der Session warten ...")
-        session = wait_for_session(client, session_id, args.timeout)
-        result = (session.get("result") or {}).get("result")
-        message = (session.get("result") or {}).get("message")
-        if result == "Failed":
-            raise VeeamError(f"Publish fehlgeschlagen: {message}")
-
-        mount = find_mount(client, session, restore_point_id)
-        if mount is None:
-            raise VeeamError(
-                "Session beendet, aber der Mount konnte nicht ermittelt werden."
-            )
+        print("[5] Waiting for the disks to be mounted ...")
+        mount = wait_for_mount(client, session, restore_point_id, args.timeout)
+        active_mount_id = mount.get("id")
 
         if args.json:
             print(json.dumps(mount, indent=2, ensure_ascii=False))
         else:
             print_mount_details(mount)
-        return 0
+
+        if args.keep:
+            return 0
+
+        # The disks stay published until they are unpublished, so hold here.
+        if not sys.stdin.isatty():
+            print("\nNo interactive terminal - disks stay published.")
+            return 0
+
+        try:
+            wait_for_keypress("\nPress any key to unpublish the disks ...")
+        except KeyboardInterrupt:
+            print("")
+        return do_unpublish(client, mount.get("id"), args.timeout)
 
     except VeeamError as exc:
-        print(f"\nFEHLER: {exc}", file=sys.stderr)
+        print(f"\nERROR: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        print("\nAbgebrochen.", file=sys.stderr)
+        print("\nAborted.", file=sys.stderr)
+        if active_mount_id and not args.keep:
+            try:
+                do_unpublish(client, active_mount_id, args.timeout)
+            except VeeamError as exc:
+                print(f"Unpublish failed: {exc}", file=sys.stderr)
         return 130
     finally:
         client.logout()
