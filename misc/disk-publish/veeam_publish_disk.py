@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""
-Veeam Backup & Replication - Data Integration API
-Disk Publish (iSCSI) fuer Windows Backups.
+"""Veeam B&R Data Integration API: publish restore point disks as an iSCSI
+target on a mount server. The mount server is given by hostname, its
+mountHostId is resolved via the REST API.
 
-Publiziert die Disks eines Restore Points als iSCSI Target auf einem Mount
-Server. Der Mount Server wird per Hostname uebergeben, die noetige
-mountHostId wird ueber die REST API ermittelt.
-
-API: 1.3-rev2  (POST /api/v1/dataIntegration/publish)
+API 1.3-rev2 - POST /api/v1/dataIntegration/publish
 """
 
 import argparse
@@ -21,13 +17,8 @@ from pathlib import Path
 import requests
 import urllib3
 
-# --------------------------------------------------------------------------
-# .env laden (kein externes Paket noetig)
-# --------------------------------------------------------------------------
-
-
 def load_dotenv(path: Path) -> None:
-    """Liest ein einfaches .env File ein (KEY=VALUE, # = Kommentar)."""
+    """Read a simple .env file (KEY=VALUE, # comment)."""
     if not path.is_file():
         return
     for raw in path.read_text(encoding="utf-8-sig").splitlines():
@@ -39,7 +30,7 @@ def load_dotenv(path: Path) -> None:
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
-        # Bereits gesetzte Umgebungsvariablen gewinnen
+        # existing environment variables win
         os.environ.setdefault(key, value)
 
 
@@ -48,11 +39,6 @@ def env_bool(name: str, default: bool) -> bool:
     if value is None or value == "":
         return default
     return value.strip().lower() in ("1", "true", "yes", "y", "on", "ja")
-
-
-# --------------------------------------------------------------------------
-# API Client
-# --------------------------------------------------------------------------
 
 
 class VeeamError(RuntimeError):
@@ -72,8 +58,6 @@ class VbrClient:
         self._refresh_token = None
         if not verify_ssl:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-    # -- intern ------------------------------------------------------------
 
     def _headers(self, extra=None):
         headers = {
@@ -126,8 +110,6 @@ class VbrClient:
     def post(self, path, json_body=None):
         return self._request("POST", path, json=json_body)
 
-    # -- Auth --------------------------------------------------------------
-
     def login(self):
         data = {
             "grant_type": "password",
@@ -157,17 +139,11 @@ class VbrClient:
             self._token = None
 
 
-# --------------------------------------------------------------------------
-# Mount Server Aufloesung  (Hostname -> mountHostId)
-# --------------------------------------------------------------------------
-
-
 def get_mount_servers(client):
-    """Alle Server mit Mount-Server-Rolle inkl. Namen.
+    """Servers holding the mount server role, including their names.
 
-    /api/v1/backupInfrastructure/mountServers liefert nur IDs (die ID ist
-    identisch mit der ID des Managed Servers). Der Name kommt daher aus
-    /api/v1/backupInfrastructure/managedServers.
+    /backupInfrastructure/mountServers returns IDs only; the ID equals the
+    managed server ID, so names come from /backupInfrastructure/managedServers.
     """
     mount_servers = client.get(
         "/api/v1/backupInfrastructure/mountServers", {"limit": 1000}
@@ -197,16 +173,16 @@ def get_mount_servers(client):
 
 
 def resolve_mount_host_id(client, hostname):
-    """Ermittelt die mountHostId anhand des Mount-Server-Hostnamens."""
+    """Resolve mountHostId from the mount server hostname."""
     servers = get_mount_servers(client)
     wanted = hostname.strip().lower()
 
-    # 1. exakter Treffer auf den vollen Namen
+    # exact full name
     exact = [s for s in servers if s["name"].lower() == wanted]
     if len(exact) == 1:
         return exact[0]
 
-    # 2. Kurzname vs. FQDN (winsrv01 == winsrv01.contoso.local)
+    # short name vs. FQDN (winsrv01 == winsrv01.contoso.local)
     short = [
         s
         for s in servers
@@ -215,7 +191,7 @@ def resolve_mount_host_id(client, hostname):
     if len(short) == 1:
         return short[0]
 
-    # 3. Teilstring
+    # substring
     partial = [s for s in servers if wanted in s["name"].lower()]
     if len(partial) == 1:
         return partial[0]
@@ -234,13 +210,8 @@ def resolve_mount_host_id(client, hostname):
     )
 
 
-# --------------------------------------------------------------------------
-# Restore Point Aufloesung
-# --------------------------------------------------------------------------
-
-
 def find_latest_restore_point(client, object_name):
-    """Neuester Restore Point eines Backup-Objekts (z.B. Windows Server VM)."""
+    """Latest restore point of a backup object (e.g. a Windows server)."""
     objects = client.get(
         "/api/v1/backupObjects", {"nameFilter": object_name, "limit": 100}
     ).get("data", [])
@@ -287,13 +258,8 @@ def list_restore_points(client, object_name, limit):
     return points
 
 
-# --------------------------------------------------------------------------
-# Publish / Session Handling
-# --------------------------------------------------------------------------
-
-
 def publish_disks(client, restore_point_id, mount_host_id, allowed_ips, reason, disk_names):
-    """POST /api/v1/dataIntegration/publish  (Modus ISCSITarget)."""
+    """POST /api/v1/dataIntegration/publish in ISCSITarget mode."""
     spec = {
         "restorePointId": restore_point_id,
         "type": "ISCSITarget",
@@ -308,7 +274,7 @@ def publish_disks(client, restore_point_id, mount_host_id, allowed_ips, reason, 
 
 
 def wait_for_session(client, session_id, timeout, interval=5):
-    """Wartet, bis die Publish-Session den Status 'Stopped' erreicht."""
+    """Poll the session until its state is 'Stopped'."""
     deadline = time.time() + timeout
     last_state = None
     while time.time() < deadline:
@@ -326,7 +292,7 @@ def wait_for_session(client, session_id, timeout, interval=5):
 
 
 def find_mount(client, session, restore_point_id):
-    """Ermittelt das Mount-Objekt (Details zum iSCSI Target)."""
+    """Look up the mount object holding the iSCSI target details."""
     candidates = [session.get("resourceId"), session.get("id")]
     for mount_id in [c for c in candidates if c]:
         try:
@@ -343,11 +309,6 @@ def find_mount(client, session, restore_point_id):
 
 def unpublish(client, mount_id):
     return client.post(f"/api/v1/dataIntegration/{mount_id}/unpublish")
-
-
-# --------------------------------------------------------------------------
-# Ausgabe
-# --------------------------------------------------------------------------
 
 
 def print_mount_details(mount):
@@ -380,11 +341,6 @@ def print_mount_details(mount):
     print("  Wieder aushaengen:")
     print(f"    {Path(sys.argv[0]).name} --unpublish {mount.get('id')}")
     print("=" * 72)
-
-
-# --------------------------------------------------------------------------
-# CLI
-# --------------------------------------------------------------------------
 
 
 def build_parser():
@@ -422,7 +378,11 @@ def build_parser():
     )
     parser.add_argument(
         "--allowed-ips",
-        help="Komma-Liste der IPs/Netze, die auf das iSCSI Target zugreifen duerfen. Default: alle (0.0.0.0/0).",
+        action="append",
+        help=(
+            "IP-Adresse, die auf das iSCSI Target zugreifen darf. Mehrfach "
+            "verwendbar oder als Komma-Liste. Default: ALLOWED_IPS aus dem .env."
+        ),
     )
     parser.add_argument(
         "--disk",
@@ -477,7 +437,7 @@ def main(argv=None):
     user = os.environ.get("VBR_USER")
     password = os.environ.get("VBR_PASSWORD")
     api_version = os.environ.get("VBR_API_VERSION", "1.3-rev2")
-    # Self-signed Zertifikate werden standardmaessig ignoriert
+    # self-signed certificates are ignored by default
     verify_ssl = not env_bool("VBR_SKIP_SSL_VERIFY", True)
 
     missing = [
@@ -495,8 +455,13 @@ def main(argv=None):
         )
 
     mount_server = args.mount_server or os.environ.get("MOUNT_SERVER") or None
-    allowed_ips_raw = args.allowed_ips or os.environ.get("ALLOWED_IPS") or "0.0.0.0/0"
-    allowed_ips = [ip.strip() for ip in allowed_ips_raw.split(",") if ip.strip()]
+    allowed_ips_raw = args.allowed_ips or [os.environ.get("ALLOWED_IPS", "")]
+    allowed_ips = [
+        ip.strip()
+        for entry in allowed_ips_raw
+        for ip in entry.split(",")
+        if ip.strip()
+    ]
     reason = args.reason or os.environ.get("PUBLISH_REASON") or None
 
     client = VbrClient(host, port, user, password, api_version, verify_ssl)
@@ -506,7 +471,7 @@ def main(argv=None):
         client.login()
         print("    Anmeldung erfolgreich.")
 
-        # ---- reine Info-Modi -------------------------------------------
+        # info-only modes
         if args.list_mount_servers:
             servers = get_mount_servers(client)
             if args.json:
@@ -559,7 +524,7 @@ def main(argv=None):
             print(f"    Unpublish abgeschlossen (Ergebnis: {result}).")
             return 0
 
-        # ---- Publish ----------------------------------------------------
+        # publish
         if not mount_server:
             parser.error(
                 "Mount Server fehlt: --mount-server <hostname> angeben "
@@ -567,6 +532,11 @@ def main(argv=None):
             )
         if not args.restore_point and not args.object:
             parser.error("Entweder --restore-point <id> oder --object <name> angeben.")
+        if not allowed_ips:
+            parser.error(
+                "Keine erlaubten IPs: --allowed-ips <ip>[,<ip>] angeben "
+                "(oder ALLOWED_IPS im .env setzen)."
+            )
 
         print(f"[2] Mount Server '{mount_server}' aufloesen ...")
         mount_srv = resolve_mount_host_id(client, mount_server)
